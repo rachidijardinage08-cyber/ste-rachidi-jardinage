@@ -1,0 +1,7 @@
+{
+  "name": "Copy of STE RACHIDI JARDINAGE SARL AU",
+  "description": "Leader de l'aménagement paysager, du nettoyage professionnel et HSE à Safi, Maroc. Création et entretien d'espaces verts depuis 2016.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
