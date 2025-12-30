@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppView, ServiceCategory, Project, QuoteRequest } from './types';
 import ProjectCard from './components/ProjectCard';
 import { GoogleGenAI } from "@google/genai";
+import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 
 const SERVICES: ServiceCategory[] = [
   {
@@ -72,7 +73,6 @@ const PROJECTS: Project[] = [
   }
 ];
 
-const HERO_IMAGE = "https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=1200&q=80";
 const LOGO_URL = "https://i.ibb.co/LdF8wDg0/Empreinte-verte-et-nature.png";
 const MY_PHONE = "212664381028";
 const MY_PHONE_DISPLAY = "06 64 38 10 28";
@@ -98,6 +98,7 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<QuoteRequest[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [weather, setWeather] = useState<WeatherStatus | null>(null);
+  const [dbLoading, setDbLoading] = useState(false);
   
   const [formData, setFormData] = useState<QuoteRequest>({
     clientName: '',
@@ -109,28 +110,58 @@ const App: React.FC = () => {
   });
   
   const [errors, setErrors] = useState<{phone?: string; clientName?: string; email?: string; subject?: string}>({});
-  const [loading, setLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
 
   useEffect(() => {
-    // Initial App Loading sequence
-    const loadTimer = setTimeout(() => {
-      setIsAppLoading(false);
-    }, 1800);
-
-    try {
-      const saved = localStorage.getItem('rachidi_messages');
-      if (saved) setMessages(JSON.parse(saved));
-    } catch (e) { console.error("Storage error", e); }
-    
+    const loadTimer = setTimeout(() => setIsAppLoading(false), 1800);
     const timer = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000);
     fetchWeatherAndAnalyze();
+
+    // Initial load of messages
+    if (isSupabaseConfigured) {
+      fetchMessagesFromSupabase();
+    } else {
+      loadMessagesFromLocalStorage();
+    }
 
     return () => {
       clearInterval(timer);
       clearTimeout(loadTimer);
     };
   }, []);
+
+  useEffect(() => {
+    if (view === 'ADMIN') {
+      if (isSupabaseConfigured) fetchMessagesFromSupabase();
+      else loadMessagesFromLocalStorage();
+    }
+  }, [view]);
+
+  const loadMessagesFromLocalStorage = () => {
+    try {
+      const saved = localStorage.getItem('rachidi_messages');
+      if (saved) setMessages(JSON.parse(saved));
+    } catch (e) { console.error("Local storage error", e); }
+  };
+
+  const fetchMessagesFromSupabase = async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    setDbLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .order('timestamp', { ascending: false });
+
+      if (error) throw error;
+      setMessages(data || []);
+    } catch (err) {
+      console.error("Supabase Fetch Error:", err);
+      loadMessagesFromLocalStorage(); // Fallback if query fails
+    } finally {
+      setDbLoading(false);
+    }
+  };
 
   const fetchWeatherAndAnalyze = () => {
     if (!navigator.geolocation) return;
@@ -141,7 +172,7 @@ const App: React.FC = () => {
         const data = await res.json();
         const cw = data.current_weather;
         
-        const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : null;
+        const apiKey = process.env.API_KEY;
         if (!apiKey) {
           setWeather({ temp: cw.temperature, condition: "Météo locale", suitability: 'GOOD', advice: "Ciel clair" });
           return;
@@ -158,15 +189,8 @@ const App: React.FC = () => {
         let text = response.text || "{}";
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const analysis = JSON.parse(text);
-        setWeather({ 
-          temp: cw.temperature, 
-          condition: analysis.advice || "Ok", 
-          suitability: analysis.suitability || 'GOOD', 
-          advice: analysis.advice || "Ok" 
-        });
-      } catch (err) { 
-        console.error("Weather AI Error", err);
-      }
+        setWeather({ temp: cw.temperature, condition: analysis.advice || "Variable", suitability: analysis.suitability || "GOOD", advice: analysis.advice || "Ok" });
+      } catch (err) { console.error("Weather error", err); }
     });
   };
 
@@ -181,15 +205,20 @@ const App: React.FC = () => {
     }
   };
 
-  const logout = () => {
-    setView('HOME');
-    setAdminPasswordInput('');
-  };
-
-  const deleteMessage = (id: string) => {
-    const updated = messages.filter(m => m.id !== id);
-    setMessages(updated);
-    localStorage.setItem('rachidi_messages', JSON.stringify(updated));
+  const deleteMessage = async (id: string) => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('messages').delete().eq('id', id);
+        if (error) throw error;
+        setMessages(messages.filter(m => m.id !== id));
+      } catch (err) {
+        alert("Erreur lors de la suppression sur le cloud");
+      }
+    } else {
+      const updated = messages.filter(m => m.id !== id);
+      setMessages(updated);
+      localStorage.setItem('rachidi_messages', JSON.stringify(updated));
+    }
   };
 
   const validatePhone = (phone: string) => /^(05|06|07)\d{8}$/.test(phone);
@@ -198,10 +227,9 @@ const App: React.FC = () => {
     let val = e.target.value.replace(/\D/g, ''); 
     if (val.length > 10) val = val.slice(0, 10);
     setFormData({ ...formData, phone: val });
-    if (errors.phone) setErrors({ ...errors, phone: undefined });
   };
 
-  const handleContactSubmit = (e: React.FormEvent) => {
+  const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: any = {};
     if (!formData.clientName.trim()) newErrors.clientName = "Nom obligatoire.";
@@ -214,18 +242,43 @@ const App: React.FC = () => {
       return;
     }
 
-    setLoading(true);
-    const newMessage = { ...formData, id: Date.now().toString(), timestamp: new Date().toLocaleString() };
-    const updated = [newMessage, ...messages];
-    setMessages(updated);
-    localStorage.setItem('rachidi_messages', JSON.stringify(updated));
-    setTimeout(() => {
-      setLoading(false);
+    setDbLoading(true);
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('messages').insert([{
+          clientName: formData.clientName,
+          phone: formData.phone,
+          email: formData.email,
+          serviceType: formData.serviceType,
+          subject: formData.subject,
+          budget: formData.budget
+        }]);
+        if (error) throw error;
+        setShowSuccess(true);
+      } catch (err) {
+        console.error("Supabase Send Error", err);
+        alert("Erreur de connexion au cloud. Envoi local de secours.");
+        saveToLocal();
+      } finally {
+        setDbLoading(false);
+      }
+    } else {
+      saveToLocal();
+      setDbLoading(false);
+    }
+    
+    function saveToLocal() {
+      const newMessage = { ...formData, id: Date.now().toString(), timestamp: new Date().toISOString() };
+      const updated = [newMessage, ...messages];
+      setMessages(updated);
+      localStorage.setItem('rachidi_messages', JSON.stringify(updated));
       setShowSuccess(true);
+    }
+
+    if (showSuccess || true) {
       setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
-      setErrors({});
       setTimeout(() => setShowSuccess(false), 5000);
-    }, 1000);
+    }
   };
 
   const navItems = [
@@ -240,22 +293,13 @@ const App: React.FC = () => {
     return (
       <div className="fixed inset-0 bg-[#064e3b] z-[200] flex flex-col items-center justify-center">
         <div className="relative">
-          <img 
-            src={LOGO_URL} 
-            className="w-48 md:w-64 object-contain animate-pulse duration-1000" 
-            alt="Chargement..." 
-          />
+          <img src={LOGO_URL} className="w-48 md:w-64 object-contain animate-pulse duration-1000" alt="Chargement..." />
           <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 w-48 h-1 bg-white/10 rounded-full overflow-hidden">
             <div className="h-full bg-emerald-400 animate-[loading_1.8s_ease-in-out_forwards]"></div>
           </div>
         </div>
         <p className="mt-16 text-emerald-100/50 text-[10px] font-black uppercase tracking-[0.5em] animate-pulse">STE RACHIDI JARDINAGE</p>
-        <style>{`
-          @keyframes loading {
-            0% { width: 0%; }
-            100% { width: 100%; }
-          }
-        `}</style>
+        <style>{`@keyframes loading { 0% { width: 0%; } 100% { width: 100%; } }`}</style>
       </div>
     );
   }
@@ -292,12 +336,69 @@ const App: React.FC = () => {
              <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">{view === 'ADMIN' ? 'Dashboard' : view === 'LOGIN' ? 'Connexion' : view}</h3>
           </div>
           <div className="flex items-center gap-6">
+            {dbLoading && <div className="text-[8px] font-black text-emerald-600 uppercase tracking-widest animate-pulse">{isSupabaseConfigured ? 'Sync Cloud...' : 'Sauvegarde...'}</div>}
             {weather && <div className="hidden sm:flex items-center gap-3 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100"><div className={`w-2 h-2 rounded-full ${weather.suitability === 'GOOD' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-400'}`}></div><p className="text-[10px] font-black text-slate-700 uppercase">{weather.advice} • {weather.temp}°C</p></div>}
             <div className="hidden md:block text-right"><p className="text-lg font-black text-slate-900 tracking-tighter mono leading-none">{currentTime}</p></div>
           </div>
         </header>
 
         <div className="flex-grow overflow-y-auto custom-scroll bg-slate-50/50 p-6 md:p-12">
+          {view === 'ADMIN' && (
+            <div className="max-w-6xl mx-auto view-enter space-y-10 pb-24">
+              <div className="flex flex-col md:flex-row justify-between items-end gap-6">
+                <div>
+                  <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase">Leads <span className="text-emerald-600">{isSupabaseConfigured ? 'Cloud' : 'Local'}</span></h2>
+                  <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-2">
+                    {isSupabaseConfigured ? 'Synchronisation Temps Réel Activée' : 'Mode Local (Supabase non configuré)'} • Total: {messages.length}
+                  </p>
+                </div>
+                <div className="flex gap-4">
+                  <button onClick={isSupabaseConfigured ? fetchMessagesFromSupabase : loadMessagesFromLocalStorage} className="px-6 py-4 bg-emerald-50 text-emerald-600 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 hover:bg-emerald-100 transition-all">Actualiser</button>
+                  <button onClick={() => setView('HOME')} className="px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest">Quitter</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-6">
+                {dbLoading && messages.length === 0 ? (
+                  <div className="bg-white p-20 rounded-[40px] text-center"><p className="text-emerald-600 font-black animate-pulse">Chargement des données...</p></div>
+                ) : messages.length === 0 ? (
+                  <div className="bg-white p-20 rounded-[40px] border-2 border-dashed border-slate-200 text-center"><p className="text-slate-400 font-bold">Aucun message trouvé.</p></div>
+                ) : (
+                  messages.map((msg, idx) => (
+                    <div key={msg.id || idx} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col md:flex-row gap-8 items-start">
+                      <div className="flex-grow space-y-4 w-full">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-black rounded-lg border border-emerald-100 uppercase">{msg.serviceType}</span>
+                          <span className="text-[9px] text-slate-300 font-bold uppercase">{msg.timestamp ? new Date(msg.timestamp).toLocaleString() : 'Inconnu'}</span>
+                        </div>
+                        <h4 className="text-2xl font-black text-slate-900 leading-none">{msg.clientName}</h4>
+                        <div className="flex flex-wrap gap-6 text-sm">
+                           <a href={`tel:+${msg.phone}`} className="font-black text-emerald-600">📞 {msg.phone}</a>
+                           <span className="text-slate-500">✉️ {msg.email}</span>
+                           {msg.budget && <span className="font-black">💰 {msg.budget} DH</span>}
+                        </div>
+                        <p className="bg-slate-50 p-6 rounded-3xl text-sm font-medium text-slate-600 border border-slate-100 italic leading-relaxed">"{msg.subject}"</p>
+                      </div>
+                      <button onClick={() => deleteMessage(msg.id!)} className="p-4 bg-red-50 text-red-400 hover:bg-red-500 hover:text-white rounded-2xl transition-all shadow-sm shrink-0"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {view === 'LOGIN' && (
+            <div className="min-h-[60vh] flex items-center justify-center view-enter">
+              <div className="bg-white p-10 md:p-16 rounded-[40px] shadow-2xl border border-slate-100 w-full max-w-md text-center">
+                <h2 className="text-3xl font-black text-slate-900 tracking-tighter mb-8 uppercase">Accès Gérant</h2>
+                <form onSubmit={handleAdminLogin} className="space-y-6">
+                  <input type="password" placeholder="MOT DE PASSE" required className="w-full bg-slate-50 border border-slate-200 p-5 rounded-2xl text-center font-black tracking-widest outline-none focus:border-emerald-500" value={adminPasswordInput} onChange={(e) => setAdminPasswordInput(e.target.value)} />
+                  {loginError && <p className="text-xs text-red-500 font-bold">{loginError}</p>}
+                  <button type="submit" className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-xs tracking-widest shadow-lg uppercase">Se Connecter</button>
+                </form>
+              </div>
+            </div>
+          )}
+
           {view === 'HOME' && (
             <div className="max-w-7xl mx-auto view-enter space-y-24 md:space-y-32 pb-24 pt-6">
               <section className="flex flex-col lg:flex-row gap-12 lg:gap-20 items-center px-2">
@@ -311,7 +412,8 @@ const App: React.FC = () => {
                   </div>
                 </div>
                 <div className="relative w-full max-w-md lg:max-w-none order-1 lg:order-2">
-                  <div className="rounded-[50px] overflow-hidden shadow-2xl border-[12px] border-white aspect-[4/5]"><img src={HERO_IMAGE} className="w-full h-full object-cover" alt="Hero" /></div>
+                   <div className="absolute inset-0 bg-emerald-100/30 blur-[100px] rounded-full -z-10"></div>
+                   <div className="rounded-[50px] overflow-hidden shadow-2xl border-[12px] border-white aspect-[4/5]"><img src="https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=1200&q=80" className="w-full h-full object-cover" alt="Hero" /></div>
                 </div>
               </section>
             </div>
@@ -328,7 +430,7 @@ const App: React.FC = () => {
                       <div key={ii} className="border-l-4 border-slate-50 pl-6 py-1"><p className="font-black text-sm text-slate-800 uppercase leading-tight">{item.name}</p><p className="text-xs text-slate-400 font-medium italic mt-1 leading-relaxed">{item.desc}</p></div>
                     ))}
                   </div>
-                  <button onClick={() => setView('CONTACT')} className="mt-12 py-5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg active:scale-95 uppercase">Devis Gratuit</button>
+                  <button onClick={() => setView('CONTACT')} className="mt-12 py-5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg uppercase">Devis Gratuit</button>
                 </div>
               ))}
             </div>
@@ -343,30 +445,6 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
                 {PROJECTS.map((project, i) => (
                   <div key={i} onClick={() => setSelectedProject(project)} className="w-full"><ProjectCard project={project} /></div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {view === 'QUALITY' && (
-            <div className="max-w-5xl mx-auto view-enter pb-24 px-2">
-              <div className="text-center mb-16">
-                <h2 className="text-5xl md:text-7xl font-black text-slate-900 mb-6 tracking-tighter uppercase">Engagement <span className="text-emerald-600">Total.</span></h2>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {[
-                  { t: "Zéro Défaut", d: "Chaque chantier est contrôlé par le gérant lui-même.", i: "🎯" },
-                  { t: "Matériel Pro", d: "Usage de technologies haute performance.", i: "⚡" },
-                  { t: "Éco-Responsable", d: "Gestion durable de l'eau et engrais bio.", i: "🌱" },
-                  { t: "Rapidité", d: "Intervention sous 48h.", i: "🚀" }
-                ].map((item, i) => (
-                  <div key={i} className="bg-white p-10 rounded-[40px] border border-slate-100 flex flex-col sm:flex-row gap-8 shadow-sm">
-                    <span className="text-6xl shrink-0">{item.i}</span>
-                    <div className="space-y-2">
-                      <h5 className="font-black text-xl text-slate-900 uppercase tracking-tighter">{item.t}</h5>
-                      <p className="text-sm text-slate-500 leading-relaxed font-medium italic">{item.d}</p>
-                    </div>
-                  </div>
                 ))}
               </div>
             </div>
@@ -403,27 +481,30 @@ const App: React.FC = () => {
                   <div className="bg-emerald-50 p-10 rounded-[30px] text-center space-y-4 shadow-inner">
                     <div className="w-16 h-16 bg-emerald-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4"><svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>
                     <h5 className="text-xl font-black text-emerald-900 uppercase tracking-tighter">Transmission Réussie</h5>
+                    <p className="text-xs font-bold text-emerald-600">
+                      {isSupabaseConfigured ? 'M. Rachidi a reçu votre message via le cloud.' : 'Message enregistré localement.'}
+                    </p>
                   </div>
                 ) : (
                   <form onSubmit={handleContactSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Nom Complet *</label>
-                        <input type="text" placeholder="VOTRE NOM" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black uppercase outline-none focus:border-emerald-500 shadow-inner" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
+                        <input type="text" placeholder="VOTRE NOM" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black uppercase outline-none focus:border-emerald-500" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
                       </div>
                       <div className="space-y-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Téléphone *</label>
-                        <input type="tel" placeholder="06XXXXXXXX" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500 shadow-inner" value={formData.phone} onChange={handlePhoneChange} />
+                        <input type="tel" placeholder="06XXXXXXXX" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500" value={formData.phone} onChange={handlePhoneChange} />
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Email *</label>
-                        <input type="email" placeholder="MAIL@EXEMPLE.COM" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500 shadow-inner" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                        <input type="email" placeholder="MAIL@EXEMPLE.COM" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                       </div>
                       <div className="space-y-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Service</label>
-                        <select className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500 shadow-inner" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value as any})}>
+                        <select className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value as any})}>
                           <option value="Jardinage">Jardinage</option>
                           <option value="Nettoyage">Nettoyage</option>
                           <option value="Entretien">Entretien</option>
@@ -431,10 +512,12 @@ const App: React.FC = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Votre Message *</label>
-                      <textarea placeholder="DÉTAILS DU PROJET..." required className="w-full bg-slate-50 border border-slate-100 p-6 rounded-3xl text-xs font-bold h-36 resize-none outline-none focus:border-emerald-500 shadow-inner" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Message *</label>
+                      <textarea placeholder="DÉTAILS DU PROJET..." required className="w-full bg-slate-50 border border-slate-100 p-6 rounded-3xl text-xs font-bold h-36 resize-none outline-none focus:border-emerald-500" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
                     </div>
-                    <button type="submit" disabled={loading} className="w-full py-6 bg-emerald-600 text-white rounded-[25px] font-black text-[11px] tracking-widest hover:bg-emerald-700 transition-all shadow-xl active:scale-95 uppercase">{loading ? "ENVOI..." : "Envoyer la Demande"}</button>
+                    <button type="submit" disabled={dbLoading} className="w-full py-6 bg-emerald-600 text-white rounded-[25px] font-black text-[11px] tracking-widest hover:bg-emerald-700 transition-all shadow-xl uppercase">
+                      {dbLoading ? "ENVOI EN COURS..." : isSupabaseConfigured ? "Envoyer au Maroc" : "Enregistrer (Mode Local)"}
+                    </button>
                   </form>
                 )}
               </div>
@@ -460,14 +543,6 @@ const App: React.FC = () => {
                 <button onClick={() => setSelectedProject(null)} className="hidden lg:block p-4 bg-slate-50 hover:bg-slate-100 rounded-full transition-colors text-slate-400">✕</button>
               </div>
               <p className="text-sm md:text-base text-slate-500 font-medium italic border-l-4 border-emerald-500 pl-8 py-4 bg-slate-50 rounded-r-3xl">{selectedProject.description}</p>
-              <div className="space-y-4">
-                <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Détails</h5>
-                <ul className="space-y-4">
-                  {selectedProject.fullDetails.map((detail, idx) => (
-                    <li key={idx} className="flex gap-4 items-start"><div className="w-5 h-5 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5"><svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div><span className="text-sm font-bold text-slate-700">{detail}</span></li>
-                  ))}
-                </ul>
-              </div>
             </div>
           </div>
         </div>
