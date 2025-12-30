@@ -89,6 +89,7 @@ interface WeatherStatus {
 }
 
 const App: React.FC = () => {
+  const [isAppLoading, setIsAppLoading] = useState(true);
   const [view, setView] = useState<AppView>('HOME');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -112,6 +113,11 @@ const App: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
 
   useEffect(() => {
+    // Initial App Loading sequence
+    const loadTimer = setTimeout(() => {
+      setIsAppLoading(false);
+    }, 1800);
+
     try {
       const saved = localStorage.getItem('rachidi_messages');
       if (saved) setMessages(JSON.parse(saved));
@@ -120,7 +126,10 @@ const App: React.FC = () => {
     const timer = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000);
     fetchWeatherAndAnalyze();
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(loadTimer);
+    };
   }, []);
 
   const fetchWeatherAndAnalyze = () => {
@@ -227,8 +236,32 @@ const App: React.FC = () => {
     { id: 'CONTACT', label: 'Contact', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' }
   ];
 
+  if (isAppLoading) {
+    return (
+      <div className="fixed inset-0 bg-[#064e3b] z-[200] flex flex-col items-center justify-center">
+        <div className="relative">
+          <img 
+            src={LOGO_URL} 
+            className="w-48 md:w-64 object-contain animate-pulse duration-1000" 
+            alt="Chargement..." 
+          />
+          <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 w-48 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div className="h-full bg-emerald-400 animate-[loading_1.8s_ease-in-out_forwards]"></div>
+          </div>
+        </div>
+        <p className="mt-16 text-emerald-100/50 text-[10px] font-black uppercase tracking-[0.5em] animate-pulse">STE RACHIDI JARDINAGE</p>
+        <style>{`
+          @keyframes loading {
+            0% { width: 0%; }
+            100% { width: 100%; }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-screen w-screen bg-slate-100 text-slate-800 overflow-hidden font-sans">
+    <div className="flex h-screen w-screen bg-slate-100 text-slate-800 overflow-hidden font-sans animate-in fade-in duration-700">
       {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
       <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static w-72 md:w-80 bg-[#064e3b] flex flex-col shadow-2xl z-50 transition-transform duration-300 ease-in-out`}>
