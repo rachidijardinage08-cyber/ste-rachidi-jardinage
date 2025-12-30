@@ -397,11 +397,11 @@ const App: React.FC = () => {
                   <h4 className="text-[12px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-12">STE RACHIDI JARDINAGE</h4>
                   <div className="space-y-12">
                     <div>
-                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-2 opacity-60">Localisation / Adresse</p>
+                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-2 opacity-60">Localisation</p>
                       <p className="text-base md:text-xl font-black leading-snug tracking-tighter uppercase">{MY_ADDRESS}</p>
                     </div>
                     <div className="space-y-8">
-                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest opacity-60">Num de tel / Contact</p>
+                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest opacity-60">Num de tel</p>
                       <a href={`tel:+${MY_PHONE}`} className="flex items-center gap-6 group">
                         <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-emerald-950/40 group-hover:bg-emerald-500 transition-colors"><svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg></div>
                         <span className="text-2xl md:text-3xl font-black tracking-tighter font-mono">{MY_PHONE_DISPLAY}</span>
