@@ -112,8 +112,10 @@ const App: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
 
   useEffect(() => {
-    const saved = localStorage.getItem('rachidi_messages');
-    if (saved) setMessages(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem('rachidi_messages');
+      if (saved) setMessages(JSON.parse(saved));
+    } catch (e) { console.error("Storage error", e); }
     
     const timer = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000);
     fetchWeatherAndAnalyze();
@@ -129,16 +131,35 @@ const App: React.FC = () => {
         const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`);
         const data = await res.json();
         const cw = data.current_weather;
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        
+        // Safety check for API Key to prevent blank page
+        const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : null;
+        if (!apiKey) {
+          setWeather({ temp: cw.temperature, condition: "Météo locale", suitability: 'GOOD', advice: "Ciel clair" });
+          return;
+        }
+
+        const ai = new GoogleGenAI({ apiKey });
         const prompt = `En tant qu'expert en jardinage chez STE RACHIDI, analyse cette météo : ${cw.temperature}°C. Dis si c'est propice au jardinage. JSON: {"advice": "4 mots max", "suitability": "GOOD" ou "BAD"}`;
         const response = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
           contents: prompt,
           config: { responseMimeType: "application/json" }
         });
-        const analysis = JSON.parse(response.text);
-        setWeather({ temp: cw.temperature, condition: analysis.advice, suitability: analysis.suitability, advice: analysis.advice });
-      } catch (err) { console.error(err); }
+        
+        // Clean response text to ensure it's valid JSON
+        let text = response.text || "{}";
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const analysis = JSON.parse(text);
+        setWeather({ 
+          temp: cw.temperature, 
+          condition: analysis.advice || "Ok", 
+          suitability: analysis.suitability || 'GOOD', 
+          advice: analysis.advice || "Ok" 
+        });
+      } catch (err) { 
+        console.error("Weather AI Error", err);
+      }
     });
   };
 
@@ -167,8 +188,8 @@ const App: React.FC = () => {
   const validatePhone = (phone: string) => /^(05|06|07)\d{8}$/.test(phone);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = e.target.value.replace(/\D/g, ''); // Uniquement des chiffres
-    if (val.length > 10) val = val.slice(0, 10); // Max 10 chiffres
+    let val = e.target.value.replace(/\D/g, ''); 
+    if (val.length > 10) val = val.slice(0, 10);
     setFormData({ ...formData, phone: val });
     if (errors.phone) setErrors({ ...errors, phone: undefined });
   };
@@ -214,11 +235,8 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen bg-slate-100 text-slate-800 overflow-hidden font-sans">
-      
-      {/* Overlay mobile */}
       {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
-      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static w-72 md:w-80 bg-[#064e3b] flex flex-col shadow-2xl z-50 transition-transform duration-300 ease-in-out`}>
         <div className="p-6 flex flex-col items-center border-b border-emerald-800/30">
           <img src={LOGO_URL} className="w-40 md:w-48 object-contain" alt="Logo" />
@@ -240,9 +258,7 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Content */}
       <main className="flex-grow flex flex-col relative overflow-hidden bg-white lg:rounded-l-[40px]">
-        {/* Header simple */}
         <header className="h-20 flex items-center justify-between px-6 md:px-12 bg-white border-b border-slate-100 shrink-0 z-30">
           <div className="flex items-center gap-4">
              <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-emerald-600 bg-emerald-50 rounded-lg"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16"/></svg></button>
@@ -255,7 +271,6 @@ const App: React.FC = () => {
         </header>
 
         <div className="flex-grow overflow-y-auto custom-scroll bg-slate-50/50 p-6 md:p-12">
-          
           {view === 'LOGIN' && (
             <div className="min-h-[60vh] flex items-center justify-center view-enter">
               <div className="bg-white p-10 md:p-16 rounded-[40px] shadow-2xl border border-slate-100 w-full max-w-md text-center">
@@ -280,7 +295,6 @@ const App: React.FC = () => {
                 </div>
                 <button onClick={logout} className="px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-3"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>Déconnexion</button>
               </div>
-              
               <div className="grid grid-cols-1 gap-6">
                 {messages.length === 0 ? (
                   <div className="bg-white p-20 rounded-[40px] border-2 border-dashed border-slate-200 text-center"><p className="text-slate-400 font-bold">Aucune demande pour le moment.</p></div>
@@ -325,7 +339,6 @@ const App: React.FC = () => {
                   <div className="rounded-[50px] overflow-hidden shadow-2xl border-[12px] border-white aspect-[4/5]"><img src={HERO_IMAGE} className="w-full h-full object-cover" alt="Hero" /></div>
                 </div>
               </section>
-              
               <section className="bg-slate-900 rounded-[50px] p-12 md:p-20 text-white grid grid-cols-2 lg:grid-cols-4 gap-12 text-center shadow-2xl mx-2">
                 {[ { v: "2016", l: "Fondation" }, { v: "100+", l: "Experts" }, { v: "5M+", l: "M² Verts" }, { v: "100%", l: "Qualité" } ].map((s, i) => (
                   <div key={i}><p className="text-4xl md:text-6xl font-black text-emerald-400 tracking-tighter mb-2">{s.v}</p><p className="text-[10px] font-black uppercase tracking-widest opacity-60">{s.l}</p></div>
