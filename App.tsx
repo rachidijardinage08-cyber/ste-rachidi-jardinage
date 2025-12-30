@@ -132,7 +132,6 @@ const App: React.FC = () => {
         const data = await res.json();
         const cw = data.current_weather;
         
-        // Safety check for API Key to prevent blank page
         const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : null;
         if (!apiKey) {
           setWeather({ temp: cw.temperature, condition: "Météo locale", suitability: 'GOOD', advice: "Ciel clair" });
@@ -140,14 +139,13 @@ const App: React.FC = () => {
         }
 
         const ai = new GoogleGenAI({ apiKey });
-        const prompt = `En tant qu'expert en jardinage chez STE RACHIDI, analyse cette météo : ${cw.temperature}°C. Dis si c'est propice au jardinage. JSON: {"advice": "4 mots max", "suitability": "GOOD" ou "BAD"}`;
+        const prompt = `En tant qu'expert en jardinage chez STE RACHIDI, analyse cette météo : ${cw.temperature}°C. Dis si c'est propice au jardinage. JSON: {"advice": "Ensoleillé", "suitability": "GOOD"}`;
         const response = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
           contents: prompt,
           config: { responseMimeType: "application/json" }
         });
         
-        // Clean response text to ensure it's valid JSON
         let text = response.text || "{}";
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const analysis = JSON.parse(text);
@@ -197,14 +195,10 @@ const App: React.FC = () => {
   const handleContactSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: any = {};
-    
-    if (!formData.clientName.trim()) newErrors.clientName = "Le nom est obligatoire.";
-    if (!formData.email.trim()) newErrors.email = "L'email est obligatoire.";
-    if (!formData.subject.trim()) newErrors.subject = "Le message est obligatoire.";
-    
-    if (!validatePhone(formData.phone)) {
-      newErrors.phone = "Le numéro doit avoir 10 chiffres et commencer par 05, 06 ou 07.";
-    }
+    if (!formData.clientName.trim()) newErrors.clientName = "Nom obligatoire.";
+    if (!formData.email.trim()) newErrors.email = "Email obligatoire.";
+    if (!formData.subject.trim()) newErrors.subject = "Message obligatoire.";
+    if (!validatePhone(formData.phone)) newErrors.phone = "Format invalide.";
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -271,62 +265,11 @@ const App: React.FC = () => {
         </header>
 
         <div className="flex-grow overflow-y-auto custom-scroll bg-slate-50/50 p-6 md:p-12">
-          {view === 'LOGIN' && (
-            <div className="min-h-[60vh] flex items-center justify-center view-enter">
-              <div className="bg-white p-10 md:p-16 rounded-[40px] shadow-2xl border border-slate-100 w-full max-w-md text-center">
-                <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-sm"><svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg></div>
-                <h2 className="text-3xl font-black text-slate-900 tracking-tighter mb-8 uppercase">Accès Sécurisé</h2>
-                <form onSubmit={handleAdminLogin} className="space-y-6">
-                  <input type="password" placeholder="MOT DE PASSE" required className="w-full bg-slate-50 border border-slate-200 p-5 rounded-2xl text-center font-black tracking-widest outline-none focus:border-emerald-500 shadow-inner" value={adminPasswordInput} onChange={(e) => setAdminPasswordInput(e.target.value)} />
-                  {loginError && <p className="text-xs text-red-500 font-bold">{loginError}</p>}
-                  <button type="submit" className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-xs tracking-widest shadow-lg hover:bg-emerald-700 transition-all uppercase">Se Connecter</button>
-                  <button type="button" onClick={() => setView('HOME')} className="text-[10px] font-black text-slate-300 uppercase tracking-widest mt-4">Retour au site</button>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {view === 'ADMIN' && (
-            <div className="max-w-6xl mx-auto view-enter space-y-10 pb-24">
-              <div className="flex flex-col md:flex-row justify-between items-end gap-6">
-                <div>
-                  <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase">Leads <span className="text-emerald-600">Reçus</span></h2>
-                  <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-2">Gestion des demandes clients • Total: {messages.length}</p>
-                </div>
-                <button onClick={logout} className="px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-3"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>Déconnexion</button>
-              </div>
-              <div className="grid grid-cols-1 gap-6">
-                {messages.length === 0 ? (
-                  <div className="bg-white p-20 rounded-[40px] border-2 border-dashed border-slate-200 text-center"><p className="text-slate-400 font-bold">Aucune demande pour le moment.</p></div>
-                ) : (
-                  messages.map((msg) => (
-                    <div key={msg.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col md:flex-row gap-8 items-start">
-                      <div className="flex-grow space-y-4 w-full">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-black rounded-lg border border-emerald-100 uppercase">{msg.serviceType}</span>
-                          <span className="text-[9px] text-slate-300 font-bold uppercase">{msg.timestamp}</span>
-                        </div>
-                        <h4 className="text-2xl font-black text-slate-900 leading-none">{msg.clientName}</h4>
-                        <div className="flex flex-wrap gap-6 text-sm">
-                           <a href={`tel:+${msg.phone}`} className="font-black text-emerald-600 flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-xl">📞 {msg.phone}</a>
-                           <span className="text-slate-500 font-bold flex items-center gap-2">✉️ {msg.email}</span>
-                           {msg.budget && <span className="font-black text-slate-900">💰 {msg.budget} DH</span>}
-                        </div>
-                        <p className="bg-slate-50 p-6 rounded-3xl text-sm font-medium text-slate-600 border border-slate-100 italic leading-relaxed">"{msg.subject}"</p>
-                      </div>
-                      <button onClick={() => deleteMessage(msg.id!)} className="p-4 bg-red-50 text-red-400 hover:bg-red-500 hover:text-white rounded-2xl transition-all shadow-sm shrink-0"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
           {view === 'HOME' && (
             <div className="max-w-7xl mx-auto view-enter space-y-24 md:space-y-32 pb-24 pt-6">
               <section className="flex flex-col lg:flex-row gap-12 lg:gap-20 items-center px-2">
                 <div className="space-y-8 text-center lg:text-left order-2 lg:order-1">
-                  <div className="inline-flex items-center gap-3 px-5 py-2.5 bg-white border border-slate-100 rounded-full shadow-sm"><span className="flex h-2.5 w-2.5 rounded-full bg-emerald-600 animate-pulse"></span><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Expertise Nationale • Safi</span></div>
+                  <div className="inline-flex items-center gap-3 px-5 py-2.5 bg-white border border-slate-100 rounded-full shadow-sm"><span className="flex h-2.5 w-2.5 rounded-full bg-emerald-600 animate-pulse"></span><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Safi • Expert Paysagiste</span></div>
                   <h1 className="text-5xl md:text-7xl font-black text-slate-900 leading-[0.95] tracking-tighter">Votre jardin,<br/> notre <span className="text-emerald-600">priorité.</span></h1>
                   <p className="text-base md:text-xl text-slate-500 font-medium leading-relaxed max-w-xl italic mx-auto lg:mx-0">L'aménagement paysager professionnel pour villas, résidences et industries à Safi et partout au Maroc.</p>
                   <div className="flex flex-wrap gap-4 justify-center lg:justify-start">
@@ -335,14 +278,8 @@ const App: React.FC = () => {
                   </div>
                 </div>
                 <div className="relative w-full max-w-md lg:max-w-none order-1 lg:order-2">
-                  <div className="absolute inset-0 bg-emerald-200/40 rounded-full blur-[100px] -z-10"></div>
                   <div className="rounded-[50px] overflow-hidden shadow-2xl border-[12px] border-white aspect-[4/5]"><img src={HERO_IMAGE} className="w-full h-full object-cover" alt="Hero" /></div>
                 </div>
-              </section>
-              <section className="bg-slate-900 rounded-[50px] p-12 md:p-20 text-white grid grid-cols-2 lg:grid-cols-4 gap-12 text-center shadow-2xl mx-2">
-                {[ { v: "2016", l: "Fondation" }, { v: "100+", l: "Experts" }, { v: "5M+", l: "M² Verts" }, { v: "100%", l: "Qualité" } ].map((s, i) => (
-                  <div key={i}><p className="text-4xl md:text-6xl font-black text-emerald-400 tracking-tighter mb-2">{s.v}</p><p className="text-[10px] font-black uppercase tracking-widest opacity-60">{s.l}</p></div>
-                ))}
               </section>
             </div>
           )}
@@ -382,20 +319,19 @@ const App: React.FC = () => {
             <div className="max-w-5xl mx-auto view-enter pb-24 px-2">
               <div className="text-center mb-16">
                 <h2 className="text-5xl md:text-7xl font-black text-slate-900 mb-6 tracking-tighter uppercase">Engagement <span className="text-emerald-600">Total.</span></h2>
-                <p className="text-slate-400 font-bold italic text-sm md:text-lg uppercase tracking-widest">La satisfaction client est notre seule règle.</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {[
                   { t: "Zéro Défaut", d: "Chaque chantier est contrôlé par le gérant lui-même.", i: "🎯" },
-                  { t: "Matériel Pro", d: "Usage de technologies Husqvarna et Stihl haute performance.", i: "⚡" },
-                  { t: "Éco-Responsable", d: "Gestion durable de l'eau et engrais bio uniquement.", i: "🌱" },
-                  { t: "Rapidité", d: "Intervention sous 48h pour l'entretien courant.", i: "🚀" }
+                  { t: "Matériel Pro", d: "Usage de technologies haute performance.", i: "⚡" },
+                  { t: "Éco-Responsable", d: "Gestion durable de l'eau et engrais bio.", i: "🌱" },
+                  { t: "Rapidité", d: "Intervention sous 48h.", i: "🚀" }
                 ].map((item, i) => (
                   <div key={i} className="bg-white p-10 rounded-[40px] border border-slate-100 flex flex-col sm:flex-row gap-8 shadow-sm">
                     <span className="text-6xl shrink-0">{item.i}</span>
                     <div className="space-y-2">
                       <h5 className="font-black text-xl text-slate-900 uppercase tracking-tighter">{item.t}</h5>
-                      <p className="text-sm text-slate-500 leading-relaxed font-medium italic opacity-80">"{item.d}"</p>
+                      <p className="text-sm text-slate-500 leading-relaxed font-medium italic">{item.d}</p>
                     </div>
                   </div>
                 ))}
@@ -407,11 +343,11 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 md:gap-16 view-enter max-w-7xl mx-auto pb-24 px-2">
               <div className="lg:col-span-5 space-y-8">
                 <div className="bg-slate-900 p-10 md:p-14 rounded-[40px] md:rounded-[50px] shadow-2xl text-white border-b-[12px] border-emerald-600">
-                  <h4 className="text-[12px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-12">STE RACHIDI JARDINAGE</h4>
+                  <h4 className="text-[14px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-12">STE RACHIDI JARDINAGE</h4>
                   <div className="space-y-12">
                     <div>
                       <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-2 opacity-60">Localisation</p>
-                      <p className="text-base md:text-xl font-black leading-snug tracking-tighter uppercase">{MY_ADDRESS}</p>
+                      <p className="text-base md:text-lg font-black leading-snug tracking-tighter uppercase">{MY_ADDRESS}</p>
                     </div>
                     <div className="space-y-8">
                       <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest opacity-60">Num de tel</p>
@@ -421,7 +357,7 @@ const App: React.FC = () => {
                       </a>
                       <div>
                         <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-2 opacity-60">Email</p>
-                        <p className="text-sm md:text-base text-slate-300 font-bold uppercase tracking-widest leading-none break-all">{MY_EMAIL}</p>
+                        <p className="text-sm md:text-base text-slate-300 font-bold uppercase tracking-widest break-all leading-tight">{MY_EMAIL}</p>
                       </div>
                     </div>
                   </div>
@@ -434,50 +370,38 @@ const App: React.FC = () => {
                   <div className="bg-emerald-50 p-10 rounded-[30px] text-center space-y-4 shadow-inner">
                     <div className="w-16 h-16 bg-emerald-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4"><svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>
                     <h5 className="text-xl font-black text-emerald-900 uppercase tracking-tighter">Transmission Réussie</h5>
-                    <p className="text-sm font-medium text-emerald-700 italic">M. Rachidi vous contactera très rapidement.</p>
                   </div>
                 ) : (
                   <form onSubmit={handleContactSubmit} className="space-y-6">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">* Les informations marquées par une astérisque sont darori (obligatoires).</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Nom Complet *</label>
-                        <input type="text" placeholder="VOTRE NOM" required className={`w-full bg-slate-50 border ${errors.clientName ? 'border-red-500 ring-2 ring-red-100' : 'border-slate-100'} p-4 rounded-2xl text-xs font-black uppercase outline-none focus:border-emerald-500 shadow-inner transition-all`} value={formData.clientName} onChange={e => {setFormData({...formData, clientName: e.target.value}); if(errors.clientName) setErrors({...errors, clientName: undefined});}} />
-                        {errors.clientName && <p className="text-[8px] font-black text-red-500 uppercase ml-4 tracking-widest">{errors.clientName}</p>}
+                        <input type="text" placeholder="VOTRE NOM" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black uppercase outline-none focus:border-emerald-500 shadow-inner" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
                       </div>
                       <div className="space-y-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Téléphone *</label>
-                        <input type="tel" placeholder="06XXXXXXXX" required className={`w-full bg-slate-50 border ${errors.phone ? 'border-red-500 ring-2 ring-red-100' : 'border-slate-100'} p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500 shadow-inner transition-all`} value={formData.phone} onChange={handlePhoneChange} />
-                        {errors.phone && <p className="text-[8px] font-black text-red-500 uppercase ml-4 tracking-widest animate-pulse">{errors.phone}</p>}
+                        <input type="tel" placeholder="06XXXXXXXX" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500 shadow-inner" value={formData.phone} onChange={handlePhoneChange} />
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Email *</label>
-                        <input type="email" placeholder="EXEMPLE@MAIL.COM" required className={`w-full bg-slate-50 border ${errors.email ? 'border-red-500 ring-2 ring-red-100' : 'border-slate-100'} p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500 shadow-inner transition-all`} value={formData.email} onChange={e => {setFormData({...formData, email: e.target.value}); if(errors.email) setErrors({...errors, email: undefined});}} />
-                        {errors.email && <p className="text-[8px] font-black text-red-500 uppercase ml-4 tracking-widest">{errors.email}</p>}
+                        <input type="email" placeholder="MAIL@EXEMPLE.COM" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500 shadow-inner" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Type de Service</label>
-                        <select className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500 shadow-inner appearance-none" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value as any})}>
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Service</label>
+                        <select className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500 shadow-inner" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value as any})}>
                           <option value="Jardinage">Jardinage</option>
                           <option value="Nettoyage">Nettoyage</option>
                           <option value="Entretien">Entretien</option>
-                          <option value="Fourniture">Fourniture</option>
-                          <option value="Autre">Autre</option>
                         </select>
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Budget Estimé (DH) <span className="opacity-50">(Optionnel)</span></label>
-                      <input type="text" placeholder="VOTRE BUDGET ESTIMÉ" className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500 shadow-inner" value={formData.budget} onChange={e => setFormData({...formData, budget: e.target.value})} />
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Votre Message *</label>
+                      <textarea placeholder="DÉTAILS DU PROJET..." required className="w-full bg-slate-50 border border-slate-100 p-6 rounded-3xl text-xs font-bold h-36 resize-none outline-none focus:border-emerald-500 shadow-inner" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Votre Message / Lieu *</label>
-                      <textarea placeholder="DÉTAILS DU PROJET ET LIEU d'INTERVENTION..." required className={`w-full bg-slate-50 border ${errors.subject ? 'border-red-500 ring-2 ring-red-100' : 'border-slate-100'} p-6 rounded-3xl text-xs font-bold h-36 resize-none outline-none focus:border-emerald-500 shadow-inner transition-all`} value={formData.subject} onChange={e => {setFormData({...formData, subject: e.target.value}); if(errors.subject) setErrors({...errors, subject: undefined});}} />
-                      {errors.subject && <p className="text-[8px] font-black text-red-500 uppercase ml-4 tracking-widest">{errors.subject}</p>}
-                    </div>
-                    <button type="submit" disabled={loading} className="w-full py-6 bg-emerald-600 text-white rounded-[25px] font-black text-[11px] tracking-widest hover:bg-emerald-700 transition-all shadow-xl active:scale-95 uppercase">{loading ? "ENVOI EN COURS..." : "Envoyer la Demande"}</button>
+                    <button type="submit" disabled={loading} className="w-full py-6 bg-emerald-600 text-white rounded-[25px] font-black text-[11px] tracking-widest hover:bg-emerald-700 transition-all shadow-xl active:scale-95 uppercase">{loading ? "ENVOI..." : "Envoyer la Demande"}</button>
                   </form>
                 )}
               </div>
@@ -492,36 +416,32 @@ const App: React.FC = () => {
 
       {selectedProject && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-12 bg-slate-950/95 backdrop-blur-md">
-          <div className="bg-white w-full max-w-6xl max-h-[90vh] rounded-[40px] md:rounded-[60px] overflow-hidden flex flex-col lg:flex-row shadow-2xl animate-in zoom-in-95">
-            <div className="lg:w-1/2 h-64 md:h-80 lg:h-auto shrink-0 bg-slate-100 relative">
+          <div className="bg-white w-full max-w-6xl max-h-[90vh] rounded-[40px] overflow-hidden flex flex-col lg:flex-row shadow-2xl animate-in zoom-in-95">
+            <div className="lg:w-1/2 h-64 lg:h-auto bg-slate-100 relative">
               <img src={selectedProject.imageUrl} className="w-full h-full object-cover" alt={selectedProject.title} />
-              <button onClick={() => setSelectedProject(null)} className="lg:hidden absolute top-6 right-6 p-4 bg-white/20 backdrop-blur-md text-white rounded-full"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+              <button onClick={() => setSelectedProject(null)} className="absolute top-6 right-6 p-4 bg-white/20 backdrop-blur-md text-white rounded-full lg:hidden">✕</button>
             </div>
             <div className="lg:w-1/2 p-8 md:p-16 overflow-y-auto custom-scroll space-y-10">
               <div className="flex justify-between items-start">
-                <div className="space-y-4">
-                  <h4 className="text-4xl font-black text-slate-900 tracking-tighter leading-none uppercase">{selectedProject.title}</h4>
-                  <div className="flex flex-wrap gap-2">{selectedProject.tags.map(tag => ( <span key={tag} className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">{tag}</span> ))}</div>
-                </div>
-                <button onClick={() => setSelectedProject(null)} className="hidden lg:block p-4 bg-slate-50 hover:bg-slate-100 rounded-full transition-colors"><svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                <h4 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">{selectedProject.title}</h4>
+                <button onClick={() => setSelectedProject(null)} className="hidden lg:block p-4 bg-slate-50 hover:bg-slate-100 rounded-full transition-colors text-slate-400">✕</button>
               </div>
-              <p className="text-sm md:text-base text-slate-500 font-medium leading-relaxed italic border-l-4 border-emerald-500 pl-8 py-6 bg-slate-50 rounded-r-3xl">"{selectedProject.description}"</p>
-              <div className="space-y-6">
-                <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3">Détails Techniques</h5>
+              <p className="text-sm md:text-base text-slate-500 font-medium italic border-l-4 border-emerald-500 pl-8 py-4 bg-slate-50 rounded-r-3xl">{selectedProject.description}</p>
+              <div className="space-y-4">
+                <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Détails</h5>
                 <ul className="space-y-4">
                   {selectedProject.fullDetails.map((detail, idx) => (
-                    <li key={idx} className="flex gap-4 items-start"><div className="w-6 h-6 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5"><svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div><span className="text-sm font-bold text-slate-700 leading-snug">{detail}</span></li>
+                    <li key={idx} className="flex gap-4 items-start"><div className="w-5 h-5 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5"><svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div><span className="text-sm font-bold text-slate-700">{detail}</span></li>
                   ))}
                 </ul>
               </div>
-              <button onClick={() => { setSelectedProject(null); setView('CONTACT'); }} className="w-full py-6 bg-slate-900 text-white rounded-[25px] font-black text-xs tracking-widest shadow-xl hover:bg-emerald-600 transition-all uppercase">Étudier mon projet</button>
             </div>
           </div>
         </div>
       )}
       
-      <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[60] w-16 h-16 md:w-20 md:h-20 bg-[#25D366] text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-90 transition-all animate-bounce-slow">
-        <svg className="w-8 h-8 md:w-10 md:h-10" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+      <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 z-[60] w-16 h-16 bg-[#25D366] text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-90 transition-all animate-bounce-slow">
+        <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
       </a>
     </div>
   );
