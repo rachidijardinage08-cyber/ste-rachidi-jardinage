@@ -18,7 +18,7 @@ const SERVICES: ServiceCategory[] = [
     icon: "🧹",
     items: [
       { name: "Maintenance Annuelle", desc: "Entretien régulier pour copropriétés et jardins privés." },
-      { name: "Nettoyage Façades", desc: "Restauration professionnelle des façades par jet haute pression." },
+      { name: "Nettoyage Fraçades", desc: "Restauration professionnelle des façades par jet haute pression." },
       { name: "Ponçage de Sols", desc: "Ponçage et traitement des marbres et pierres naturelles." }
     ]
   },
@@ -104,7 +104,6 @@ const App: React.FC = () => {
   });
   
   const currentVisitorId = useRef<string | null>(localStorage.getItem('rachidi_visit_id'));
-  const pagesTracked = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const timer = setTimeout(() => setIsAppLoading(false), 800);
@@ -166,16 +165,15 @@ const App: React.FC = () => {
       userAgent: navigator.userAgent
     };
 
-    const { data } = await supabase.from('visitor_logs').insert([newLog]).select();
+    const { data, error } = await supabase.from('visitor_logs').insert([newLog]).select();
+    if (error) {
+      console.warn("Visitor Log Error:", error.message);
+      return;
+    }
     if (data && data.length > 0) {
       currentVisitorId.current = data[0].id;
       localStorage.setItem('rachidi_visit_id', data[0].id);
     }
-  };
-
-  const updateVisitorPages = async () => {
-    if (!currentVisitorId.current || !isSupabaseConfigured || !supabase) return;
-    await supabase.from('visitor_logs').update({ pagesViewed: Array.from(pagesTracked.current) }).eq('id', currentVisitorId.current);
   };
 
   const fetchData = async () => {
@@ -189,7 +187,7 @@ const App: React.FC = () => {
       if (msgRes.data) setMessages(msgRes.data);
       if (logRes.data) setVisitorLogs(logRes.data);
     } catch (err) {
-      console.error("Cloud Fetch Error:", err);
+      console.error("Cloud Fetch Exception:", err);
     } finally {
       setDbLoading(false);
     }
@@ -214,25 +212,35 @@ const App: React.FC = () => {
     setDbLoading(true);
     
     const payload = {
-      clientName: formData.clientName.toUpperCase(),
-      phone: formData.phone,
-      email: formData.email.toLowerCase(),
+      clientName: formData.clientName.toUpperCase().trim(),
+      phone: formData.phone.trim(),
+      email: formData.email.toLowerCase().trim() || 'non-fourni@rachidi.ma',
       serviceType: formData.serviceType,
-      subject: formData.subject,
+      subject: formData.subject.trim(),
       budget: formData.budget || '0'
     };
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('messages').insert([payload]);
-      if (!error) setShowSuccess(true);
-      else alert("Erreur Cloud: Le gérant doit vérifier la table 'messages' dans Supabase.");
+      try {
+        const { error } = await supabase.from('messages').insert([payload]);
+        if (!error) {
+          setShowSuccess(true);
+          setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
+        } else {
+          console.error("Supabase Detailed Error:", error);
+          alert(`Erreur Supabase: ${error.message} (Code: ${error.code}). Vérifiez que les colonnes 'clientName', 'phone', 'email', 'serviceType', 'subject', 'budget' existent bien.`);
+        }
+      } catch (err: any) {
+        console.error("Submission Exception:", err);
+        alert(`Exception: ${err.message || 'Erreur inconnue'}`);
+      }
     } else {
       mockDb.saveMessage(payload);
       setShowSuccess(true);
+      setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
     }
 
     setDbLoading(false);
-    setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
     setTimeout(() => setShowSuccess(false), 5000);
   };
 
@@ -392,7 +400,6 @@ const App: React.FC = () => {
                       <h3 className="text-3xl md:text-4xl font-black text-slate-900 uppercase tracking-tighter">Synchronisation <span className="text-indigo-600">Global Cloud</span></h3>
                       <p className="text-xs md:text-base font-bold text-slate-400 leading-relaxed italic border-l-4 border-indigo-200 pl-6">
                         Important: Pour que les messages d'un client en USA arrivent jusqu'à Safi, vous devez configurer Supabase dans les paramètres de votre hébergeur (Vercel/Netlify).
-                        En attendant, vous pouvez "Forcer la synchro" sur cet appareil uniquement ci-dessous.
                       </p>
                    </div>
                    
@@ -449,7 +456,7 @@ const App: React.FC = () => {
                       <h5 className="text-lg font-black text-slate-900 tracking-tighter leading-none">{log.ip}</h5>
                       <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">📍 {log.location}</p>
                       <div className="pt-4 border-t border-slate-50 flex flex-wrap gap-2">
-                        {log.pagesViewed.map((p, i) => <span key={i} className="px-2 py-0.5 bg-slate-50 text-slate-400 text-[8px] font-black rounded uppercase">{p}</span>)}
+                        {log.pagesViewed?.map((p, i) => <span key={i} className="px-2 py-0.5 bg-slate-50 text-slate-400 text-[8px] font-black rounded uppercase">{p}</span>)}
                       </div>
                     </div>
                   ))}

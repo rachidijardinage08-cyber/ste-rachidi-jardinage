@@ -1,37 +1,45 @@
 import { createClient } from '@supabase/supabase-js';
 
-const getEnv = (key: string): string => {
-  let value = '';
-  
-  // 1. Vite / Vercel Environment (Priorité absolue pour le Global Sync)
+/**
+ * Récupère une variable d'environnement de manière sécurisée.
+ * Supporte Vite (import.meta.env) et les environnements classiques (process.env).
+ * Fallback sur le localStorage pour la configuration manuelle du gérant.
+ */
+const getEnvValue = (key: string): string => {
+  // 1. Essayer Vite (Statique pour le remplacement au build)
   try {
-    // @ts-ignore
-    value = import.meta.env[`VITE_${key}`] || import.meta.env[key] || '';
+    // Cast import.meta to any to avoid Property 'env' does not exist on type 'ImportMeta' errors
+    const meta = import.meta as any;
+    if (typeof meta !== 'undefined' && meta.env) {
+      if (key === 'VITE_SUPABASE_URL') return meta.env.VITE_SUPABASE_URL || '';
+      if (key === 'VITE_SUPABASE_ANON_KEY') return meta.env.VITE_SUPABASE_ANON_KEY || '';
+    }
   } catch (e) {}
 
-  if (!value) {
-    try {
-      // @ts-ignore
-      value = process.env[key] || '';
-    } catch (e) {}
-  }
+  // 2. Essayer process.env (Fallback pour certains environnements de déploiement)
+  try {
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env) {
+      const val = process.env[key] || process.env[key.replace('VITE_', '')];
+      if (val) return val;
+    }
+  } catch (e) {}
 
-  // 2. Admin Manual Fallback (Pour le test du gérant)
-  if (!value) {
-    try {
-      value = localStorage.getItem(`RACHIDI_FORCE_SYNC_${key}`) || '';
-    } catch (e) {}
-  }
+  // 3. Fallback sur le stockage local (Mode Force Sync Admin)
+  try {
+    const localKey = `RACHIDI_FORCE_SYNC_${key}`;
+    return localStorage.getItem(localKey) || '';
+  } catch (e) {}
 
-  return value.trim();
+  return '';
 };
 
-const supabaseUrl = getEnv('SUPABASE_URL');
-const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY');
+const supabaseUrl = getEnvValue('VITE_SUPABASE_URL').trim();
+const supabaseAnonKey = getEnvValue('VITE_SUPABASE_ANON_KEY').trim();
 
 export const isSupabaseConfigured = supabaseUrl.length > 10 && supabaseAnonKey.length > 20;
 
-// Création du client avec gestion des erreurs
+// Création du client avec gestion d'absence de configuration
 export const supabase = isSupabaseConfigured 
   ? createClient(supabaseUrl, supabaseAnonKey, {
       realtime: {
@@ -42,9 +50,12 @@ export const supabase = isSupabaseConfigured
     }) 
   : null;
 
-// Système de stockage local (si le cloud n'est pas configuré au build)
 export const mockDb = {
-  getMessages: () => JSON.parse(localStorage.getItem('rachidi_local_msgs') || '[]'),
+  getMessages: () => {
+    try {
+      return JSON.parse(localStorage.getItem('rachidi_local_msgs') || '[]');
+    } catch (e) { return []; }
+  },
   saveMessage: (msg: any) => {
     const msgs = mockDb.getMessages();
     const newMsg = { ...msg, id: 'local_' + Date.now(), timestamp: new Date().toISOString() };
@@ -63,13 +74,13 @@ export const getSafeConfigStatus = () => ({
 });
 
 export const saveAdminKeys = (url: string, key: string) => {
-  localStorage.setItem('RACHIDI_FORCE_SYNC_SUPABASE_URL', url.trim());
-  localStorage.setItem('RACHIDI_FORCE_SYNC_SUPABASE_ANON_KEY', key.trim());
+  localStorage.setItem('RACHIDI_FORCE_SYNC_VITE_SUPABASE_URL', url.trim());
+  localStorage.setItem('RACHIDI_FORCE_SYNC_VITE_SUPABASE_ANON_KEY', key.trim());
   window.location.reload();
 };
 
 export const resetAdminKeys = () => {
-  localStorage.removeItem('RACHIDI_FORCE_SYNC_SUPABASE_URL');
-  localStorage.removeItem('RACHIDI_FORCE_SYNC_SUPABASE_ANON_KEY');
+  localStorage.removeItem('RACHIDI_FORCE_SYNC_VITE_SUPABASE_URL');
+  localStorage.removeItem('RACHIDI_FORCE_SYNC_VITE_SUPABASE_ANON_KEY');
   window.location.reload();
 };
