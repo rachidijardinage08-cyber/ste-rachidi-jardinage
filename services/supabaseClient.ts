@@ -1,13 +1,30 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Fonction de récupération sécurisée (Vercel/Vite/Browser compatible)
+// Récupération intelligente : Supporte Vercel (process.env), Vite (import.meta.env) et le Fallback manuel
 const getEnv = (key: string): string => {
-  // Tentative de récupération depuis process.env ou localStorage
+  let value = '';
+  
+  // 1. Tentative via import.meta.env (Vite standard)
   try {
-    return process.env[key] || localStorage.getItem(`RACHIDI_FALLBACK_${key}`) || '';
-  } catch {
-    return localStorage.getItem(`RACHIDI_FALLBACK_${key}`) || '';
+    // @ts-ignore
+    value = import.meta.env[`VITE_${key}`] || import.meta.env[key];
+  } catch (e) {}
+
+  // 2. Tentative via process.env (Vercel standard)
+  if (!value) {
+    try {
+      value = process.env[key] || '';
+    } catch (e) {}
   }
+
+  // 3. Tentative via localStorage (Setup manuel du gérant)
+  if (!value) {
+    try {
+      value = localStorage.getItem(`RACHIDI_FALLBACK_${key}`) || '';
+    } catch (e) {}
+  }
+
+  return value;
 };
 
 const supabaseUrl = getEnv('SUPABASE_URL');
@@ -15,20 +32,22 @@ const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY');
 
 export const isSupabaseConfigured = supabaseUrl.length > 10 && supabaseAnonKey.length > 20;
 
-// On crée le client seulement si configuré, sinon null
 export const supabase = isSupabaseConfigured 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+      },
+    }) 
   : null;
 
-/**
- * Interface de secours : Mock Database
- * Si Supabase n'est pas là, on utilise LocalStorage pour que le site reste "fonctionnel"
- */
+// Mock DB pour éviter les crashs si pas de config
 export const mockDb = {
   getMessages: () => JSON.parse(localStorage.getItem('rachidi_mock_messages') || '[]'),
   saveMessage: (msg: any) => {
     const msgs = mockDb.getMessages();
-    const newMsg = { ...msg, id: Date.now().toString(), timestamp: new Date().toISOString() };
+    const newMsg = { ...msg, id: 'local_' + Date.now(), timestamp: new Date().toISOString() };
     localStorage.setItem('rachidi_mock_messages', JSON.stringify([newMsg, ...msgs]));
     return { data: [newMsg], error: null };
   },
@@ -47,8 +66,8 @@ export const getSafeConfigStatus = () => ({
 });
 
 export const saveFallbackKeys = (url: string, key: string) => {
-  localStorage.setItem('RACHIDI_FALLBACK_SUPABASE_URL', url);
-  localStorage.setItem('RACHIDI_FALLBACK_SUPABASE_ANON_KEY', key);
+  localStorage.setItem('RACHIDI_FALLBACK_SUPABASE_URL', url.trim());
+  localStorage.setItem('RACHIDI_FALLBACK_SUPABASE_ANON_KEY', key.trim());
   window.location.reload();
 };
 
