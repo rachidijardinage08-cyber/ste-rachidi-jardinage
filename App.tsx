@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppView, ServiceCategory, Project, QuoteRequest, VisitorLog } from './types';
 import ProjectCard from './components/ProjectCard';
-import { supabase, isSupabaseConfigured, getSafeConfigStatus, saveFallbackKeys, clearFallbackKeys } from './services/supabaseClient';
+import { supabase, isSupabaseConfigured, getSafeConfigStatus, saveFallbackKeys, clearFallbackKeys, mockDb } from './services/supabaseClient';
 
 const SERVICES: ServiceCategory[] = [
   {
@@ -96,7 +96,6 @@ const App: React.FC = () => {
   const [phoneError, setPhoneError] = useState('');
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('OFF');
   
-  // States pour la config manuelle
   const [tempUrl, setTempUrl] = useState(getSafeConfigStatus().urlValue);
   const [tempKey, setTempKey] = useState(getSafeConfigStatus().keyValue);
 
@@ -115,6 +114,8 @@ const App: React.FC = () => {
       connectToRealtime();
     } else {
       setRealtimeStatus('OFF');
+      // Charger les messages mockés si pas de DB
+      setMessages(mockDb.getMessages());
     }
     
     return () => clearTimeout(timer);
@@ -138,7 +139,7 @@ const App: React.FC = () => {
         if (status === 'SUBSCRIBED') setRealtimeStatus('CONNECTED');
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           setRealtimeStatus('ERROR');
-          setTimeout(connectToRealtime, 5000);
+          setTimeout(connectToRealtime, 10000);
         }
       });
   };
@@ -162,6 +163,7 @@ const App: React.FC = () => {
       const ipRes = await fetch('https://ipapi.co/json/');
       if (ipRes.ok) ipData = await ipRes.json();
     } catch (e) {}
+    
     const newLog: VisitorLog = {
       timestamp: new Date().toISOString(),
       ip: ipData.ip || '0.0.0.0',
@@ -169,6 +171,7 @@ const App: React.FC = () => {
       pagesViewed: [view],
       userAgent: navigator.userAgent
     };
+
     if (isSupabaseConfigured && supabase) {
       const { data } = await supabase.from('visitor_logs').insert([newLog]).select();
       if (data && data.length > 0) {
@@ -184,7 +187,10 @@ const App: React.FC = () => {
   };
 
   const fetchData = async () => {
-    if (!isSupabaseConfigured || !supabase) return;
+    if (!isSupabaseConfigured || !supabase) {
+      setMessages(mockDb.getMessages());
+      return;
+    }
     setDbLoading(true);
     try {
       const [msgRes, logRes] = await Promise.all([
@@ -195,6 +201,7 @@ const App: React.FC = () => {
       if (logRes.data) setVisitorLogs(logRes.data);
     } catch (err) {
       console.error("Fetch Error:", err);
+      setMessages(mockDb.getMessages());
     } finally {
       setDbLoading(false);
     }
@@ -216,6 +223,9 @@ const App: React.FC = () => {
   const deleteMessage = async (id: string) => {
     if (isSupabaseConfigured && supabase) {
       await supabase.from('messages').delete().eq('id', id);
+    } else {
+      mockDb.deleteMessage(id);
+      setMessages(mockDb.getMessages());
     }
   };
 
@@ -229,6 +239,7 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!/^(05|06|07)[0-9]{8}$/.test(formData.phone)) return;
     setDbLoading(true);
+    
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('messages').insert([{
         clientName: formData.clientName,
@@ -238,12 +249,15 @@ const App: React.FC = () => {
         subject: formData.subject,
         budget: formData.budget
       }]);
-      if (!error) {
-        setShowSuccess(true);
-        setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
-      }
+      if (!error) setShowSuccess(true);
+    } else {
+      // Fallback local
+      mockDb.saveMessage(formData);
+      setShowSuccess(true);
     }
+
     setDbLoading(false);
+    setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
     setTimeout(() => setShowSuccess(false), 5000);
   };
 
@@ -287,9 +301,9 @@ const App: React.FC = () => {
                if (view === 'ADMIN') setAdminSubTab('DIAGNOSTIC');
                else setView('LOGIN');
              }}>
-               <span className={`w-2 h-2 rounded-full ${realtimeStatus === 'CONNECTED' ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></span>
+               <span className={`w-2 h-2 rounded-full ${realtimeStatus === 'CONNECTED' ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'}`}></span>
                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                 {realtimeStatus === 'CONNECTED' ? 'Système En Ligne' : 'Mode Offline / Setup Required'}
+                 {realtimeStatus === 'CONNECTED' ? 'Synchronisé' : 'Mode Local'}
                </span>
              </div>
           </div>
@@ -342,18 +356,10 @@ const App: React.FC = () => {
                        <p className="text-sm text-slate-400 font-bold leading-relaxed mb-10 italic relative z-10">{item.d}</p>
                        <div className="mt-auto pt-6 border-t border-slate-50 flex items-center gap-3 relative z-10">
                           <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                          <span className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Critère de Certification</span>
+                          <span className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Audit Validé</span>
                        </div>
                     </div>
                   ))}
-               </div>
-
-               <div className="bg-slate-900 rounded-[60px] p-12 md:p-24 text-center text-white relative overflow-hidden shadow-2xl">
-                  <div className="absolute top-0 right-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
-                  <h4 className="text-[12px] font-black uppercase tracking-[0.5em] text-emerald-400 mb-6">Notre Engagement</h4>
-                  <p className="text-3xl md:text-5xl font-black tracking-tighter uppercase max-w-4xl mx-auto leading-tight">
-                    Chaque m² est audité. Une erreur ? Nous intervenons en <span className="text-emerald-400">48h chrono</span> gratuitement pour rectification.
-                  </p>
                </div>
             </div>
           )}
@@ -363,12 +369,11 @@ const App: React.FC = () => {
               <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                 <div>
                    <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">CONTROL <span className="text-emerald-600">HUB</span></h2>
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Safi Live Command Center</p>
                 </div>
-                <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
                    <button onClick={() => setAdminSubTab('MESSAGES')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'MESSAGES' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Messages ({messages.length})</button>
                    <button onClick={() => setAdminSubTab('VISITS')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'VISITS' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Visiteurs ({visitorLogs.length})</button>
-                   <button onClick={() => setAdminSubTab('DIAGNOSTIC')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'DIAGNOSTIC' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Diagnostic & Setup</button>
+                   <button onClick={() => setAdminSubTab('DIAGNOSTIC')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'DIAGNOSTIC' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Réglages Cloud</button>
                 </div>
               </div>
 
@@ -382,69 +387,47 @@ const App: React.FC = () => {
                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Variables d'Environnement</span>
                            <div className="flex items-center gap-3">
                               <span className={`w-3 h-3 rounded-full ${getSafeConfigStatus().configured ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
-                              <span className="font-black text-slate-800">{getSafeConfigStatus().configured ? 'CONFIGURÉ' : 'MANQUANT'}</span>
+                              <span className="font-black text-slate-800">{getSafeConfigStatus().configured ? 'DÉTECTÉES' : 'NON DÉTECTÉES'}</span>
                            </div>
                         </div>
                         <div className="p-6 bg-slate-50 rounded-[30px] border border-slate-100">
                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Statut Realtime</span>
                            <div className="flex items-center gap-3">
-                              <span className={`w-3 h-3 rounded-full ${realtimeStatus === 'CONNECTED' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
+                              <span className={`w-3 h-3 rounded-full ${realtimeStatus === 'CONNECTED' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
                               <span className="font-black text-slate-800 uppercase">{realtimeStatus}</span>
                            </div>
                         </div>
                         <div className="p-6 bg-slate-50 rounded-[30px] border border-slate-100">
-                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Mode de Données</span>
-                           <span className="font-black text-emerald-600">{getSafeConfigStatus().configured ? 'DATABASE ACTIVE' : 'MODE LECTURE SEULE'}</span>
+                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Sauvegarde</span>
+                           <span className="font-black text-emerald-600">{getSafeConfigStatus().configured ? 'CLOUD SYNC' : 'LOCAL BROWSER'}</span>
                         </div>
                      </div>
 
-                     {!getSafeConfigStatus().configured && (
-                       <div className="bg-amber-50 p-8 rounded-[40px] border border-amber-100 space-y-6">
-                          <div>
-                             <h4 className="text-lg font-black text-amber-900 uppercase tracking-tighter mb-2">Setup Manuel Temporaire</h4>
-                             <p className="text-xs font-bold text-amber-700 italic">Si vous ne pouvez pas configurer Vercel immédiatement, entrez vos clés ici. Elles seront sauvegardées localement sur ce navigateur uniquement.</p>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <input 
-                                type="text" 
-                                placeholder="SUPABASE_URL (https://...)" 
-                                className="bg-white border border-amber-200 p-4 rounded-xl text-xs font-mono outline-none focus:border-amber-500"
-                                value={tempUrl}
-                                onChange={(e) => setTempUrl(e.target.value)}
-                             />
-                             <input 
-                                type="password" 
-                                placeholder="SUPABASE_ANON_KEY (Key...)" 
-                                className="bg-white border border-amber-200 p-4 rounded-xl text-xs font-mono outline-none focus:border-amber-500"
-                                value={tempKey}
-                                onChange={(e) => setTempKey(e.target.value)}
-                             />
-                          </div>
-                          <div className="flex gap-4">
-                            <button 
-                                onClick={() => saveFallbackKeys(tempUrl, tempKey)}
-                                className="px-8 py-4 bg-amber-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 transition-all"
-                            >
-                               Sauvegarder & Recharger
-                            </button>
-                            <button 
-                                onClick={() => clearFallbackKeys()}
-                                className="px-8 py-4 bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-300 transition-all"
-                            >
-                               Effacer Config Locale
-                            </button>
-                          </div>
-                       </div>
-                     )}
-
-                     <div className="bg-indigo-50 p-8 rounded-[40px] border border-indigo-100 space-y-4">
-                        <h4 className="text-xl font-black text-indigo-900 uppercase tracking-tighter">Instructions Vercel (Permanent)</h4>
-                        <ol className="text-sm font-bold text-indigo-700 space-y-3 list-decimal list-inside">
-                           <li>Tableau de bord <strong>Vercel</strong> -> Cliquez sur votre projet.</li>
-                           <li><strong>Settings</strong> -> <strong>Environment Variables</strong>.</li>
-                           <li>Ajoutez <code>SUPABASE_URL</code> et <code>SUPABASE_ANON_KEY</code>.</li>
-                           <li><strong>Re-déployez</strong> votre projet pour appliquer les changements à tous les utilisateurs.</li>
-                        </ol>
+                     <div className="bg-amber-50 p-8 rounded-[40px] border border-amber-100 space-y-6">
+                        <div>
+                           <h4 className="text-lg font-black text-amber-900 uppercase tracking-tighter mb-2">Setup Manuel</h4>
+                           <p className="text-xs font-bold text-amber-700 italic">Si les variables Vercel ne sont pas activées, vous pouvez injecter les clés Supabase ici.</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <input 
+                              type="text" 
+                              placeholder="URL SUPABASE (https://...)" 
+                              className="bg-white border border-amber-200 p-4 rounded-xl text-xs font-mono outline-none focus:border-amber-500"
+                              value={tempUrl}
+                              onChange={(e) => setTempUrl(e.target.value)}
+                           />
+                           <input 
+                              type="password" 
+                              placeholder="KEY ANON SUPABASE" 
+                              className="bg-white border border-amber-200 p-4 rounded-xl text-xs font-mono outline-none focus:border-amber-500"
+                              value={tempKey}
+                              onChange={(e) => setTempKey(e.target.value)}
+                           />
+                        </div>
+                        <div className="flex gap-4">
+                          <button onClick={() => saveFallbackKeys(tempUrl, tempKey)} className="px-8 py-4 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700">Enregistrer</button>
+                          <button onClick={() => clearFallbackKeys()} className="px-8 py-4 bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-300">Effacer</button>
+                        </div>
                      </div>
                   </div>
                 </div>
@@ -472,14 +455,14 @@ const App: React.FC = () => {
                       </button>
                     </div>
                   ))}
-                  {messages.length === 0 && <div className="text-center py-24 text-slate-300 font-black uppercase tracking-[0.3em]">Aucun message reçu (En attente de connexion...)</div>}
+                  {messages.length === 0 && <div className="text-center py-24 text-slate-300 font-black uppercase tracking-[0.3em]">Aucun message reçu</div>}
                 </div>
               )}
               
               {adminSubTab === 'VISITS' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {visitorLogs.map((log) => (
-                    <div key={log.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4 hover:border-emerald-200 transition-all animate-in zoom-in-95">
+                    <div key={log.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4 hover:border-emerald-200 transition-all">
                       <div className="flex justify-between items-start">
                         <div className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest">VISITEUR</div>
                         <span className="text-[9px] font-black text-slate-300 uppercase">{new Date(log.timestamp).toLocaleTimeString('fr-FR')}</span>
@@ -490,7 +473,7 @@ const App: React.FC = () => {
                       </div>
                       <div className="pt-4 border-t border-slate-50 flex flex-wrap gap-2">
                         {log.pagesViewed.map((p, idx) => (
-                          <span key={idx} className={`px-2 py-0.5 ${idx === log.pagesViewed.length - 1 ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'} text-[8px] font-black rounded-md uppercase`}>{p}</span>
+                          <span key={idx} className="px-2 py-0.5 bg-slate-100 text-slate-400 text-[8px] font-black rounded-md uppercase">{p}</span>
                         ))}
                       </div>
                     </div>
@@ -501,13 +484,8 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {/* ... Rest of the views (SERVICES, PORTFOLIO, CONTACT, LOGIN) ... */}
           {view === 'SERVICES' && (
             <div className="max-w-7xl mx-auto view-enter space-y-16 py-12">
-              <div className="text-center max-w-2xl mx-auto mb-16">
-                <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase mb-4">Nos <span className="text-emerald-600">Expertises</span></h2>
-                <p className="text-slate-500 font-medium italic">Une vision globale pour des espaces verts durables et harmonieux.</p>
-              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {SERVICES.map((cat, i) => (
                   <div key={i} className="bg-white p-10 rounded-[45px] border border-slate-100 shadow-sm hover:shadow-xl transition-all">
@@ -529,10 +507,6 @@ const App: React.FC = () => {
 
           {view === 'PORTFOLIO' && (
             <div className="max-w-7xl mx-auto view-enter py-12">
-              <div className="text-center max-w-2xl mx-auto mb-20">
-                <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase mb-4">Projets <span className="text-emerald-600">Phare</span></h2>
-                <p className="text-slate-500 font-medium italic uppercase tracking-widest text-[10px]">Découvrez nos réalisations à Safi.</p>
-              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
                 {PROJECTS.map((project, i) => (
                   <ProjectCard key={i} project={project} onExplore={() => setSelectedProject(project)} />
@@ -549,44 +523,31 @@ const App: React.FC = () => {
                   <div className="bg-emerald-50 p-16 rounded-[40px] text-center space-y-4 animate-in zoom-in">
                     <div className="w-20 h-20 bg-emerald-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl"><svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>
                     <h5 className="text-2xl font-black text-emerald-900 uppercase tracking-tighter">Notification Envoyée</h5>
-                    <p className="text-sm font-bold text-emerald-600">Le gérant recevra votre demande instantanément sur son tableau de bord.</p>
+                    <p className="text-sm font-bold text-emerald-600">Le gérant recevra votre demande instantanément.</p>
                   </div>
                 ) : (
                   <form onSubmit={handleContactSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Nom Complet</label>
-                      <input type="text" placeholder="VOTRE NOM" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-emerald-500 transition-all" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
+                    <div className="md:col-span-2 space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Nom</label>
+                      <input type="text" placeholder="VOTRE NOM" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-emerald-500" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Téléphone</label>
-                      <div className="relative">
-                        <input type="tel" placeholder="06XXXXXXXX" required className={`w-full bg-slate-50 border ${phoneError ? 'border-red-300' : 'border-slate-100'} p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500 transition-all`} value={formData.phone} onChange={handlePhoneChange} />
-                        {phoneError && <span className="absolute -bottom-5 left-4 text-[8px] text-red-500 font-black uppercase">{phoneError}</span>}
-                      </div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Phone</label>
+                      <input type="tel" placeholder="06XXXXXXXX" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500" value={formData.phone} onChange={handlePhoneChange} />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Email</label>
-                      <input type="email" placeholder="EXEMPLE@MAIL.COM" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500 uppercase transition-all" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Service Souhaité</label>
-                      <select required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500 uppercase transition-all bg-white" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value as any})}>
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Service</label>
+                      <select required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black outline-none bg-white focus:border-emerald-500 uppercase" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value as any})}>
                         <option value="Jardinage">Jardinage</option>
                         <option value="Nettoyage">Nettoyage</option>
-                        <option value="Fourniture des plantes">Fourniture des plantes</option>
                         <option value="Autre">Autre</option>
                       </select>
                     </div>
                     <div className="md:col-span-2 space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Budget Estimé (DH)</label>
-                      <input type="text" placeholder="EX: 5000" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500 transition-all" value={formData.budget} onChange={e => setFormData({...formData, budget: e.target.value})} />
+                      <textarea placeholder="VOTRE BESOIN..." required className="w-full bg-slate-50 border border-slate-100 p-6 rounded-[30px] text-xs font-bold h-32 resize-none outline-none focus:border-emerald-500" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
                     </div>
-                    <div className="md:col-span-2 space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Détails du projet</label>
-                      <textarea placeholder="DÉCRIVEZ VOTRE BESOIN..." required className="w-full bg-slate-50 border border-slate-100 p-6 rounded-[30px] text-xs font-bold h-32 resize-none outline-none focus:border-emerald-500 transition-all" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
-                    </div>
-                    <button type="submit" disabled={dbLoading || !!phoneError} className={`md:col-span-2 py-6 ${dbLoading || !!phoneError ? 'bg-slate-200 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white rounded-[25px] font-black text-[10px] tracking-[0.3em] uppercase transition-all shadow-xl active:scale-95`}>
-                      {dbLoading ? "SYCHRONISATION..." : "Envoyer la Demande"}
+                    <button type="submit" disabled={dbLoading || !!phoneError} className="md:col-span-2 py-6 bg-emerald-600 text-white rounded-[25px] font-black text-[10px] tracking-widest shadow-xl uppercase hover:bg-emerald-700 transition-all">
+                      {dbLoading ? "SYCHRONISATION..." : "Envoyer"}
                     </button>
                   </form>
                 )}
@@ -597,27 +558,23 @@ const App: React.FC = () => {
           {view === 'LOGIN' && (
             <div className="min-h-[60vh] flex items-center justify-center view-enter">
               <div className="bg-white p-12 rounded-[50px] shadow-2xl border border-slate-100 w-full max-w-md text-center">
-                <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-8">
-                  <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                </div>
                 <h2 className="text-2xl font-black text-slate-900 mb-8 uppercase tracking-tighter">Accès Gérant</h2>
                 <form onSubmit={handleAdminLogin} className="space-y-4">
                   <input type="text" placeholder="LOGIN" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl font-black focus:border-emerald-500 outline-none uppercase" value={adminUserInput} onChange={(e) => setAdminUserInput(e.target.value)} />
                   <input type="password" placeholder="PASSWORD" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl font-black focus:border-emerald-500 outline-none" value={adminPasswordInput} onChange={(e) => setAdminPasswordInput(e.target.value)} />
                   {loginError && <p className="text-xs text-red-500 font-bold">{loginError}</p>}
-                  <button type="submit" className="w-full mt-2 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] tracking-widest shadow-xl uppercase hover:bg-emerald-700 active:scale-95 transition-all">Se Connecter</button>
+                  <button type="submit" className="w-full mt-2 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] tracking-widest shadow-xl uppercase">Se Connecter</button>
                 </form>
               </div>
             </div>
           )}
         </div>
 
-        {/* Modal d'explication des projets */}
         {selectedProject && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-12 animate-in fade-in duration-300">
             <div className="absolute inset-0 bg-[#064e3b]/40 backdrop-blur-md" onClick={() => setSelectedProject(null)}></div>
             <div className="bg-white w-full max-w-5xl rounded-[40px] md:rounded-[60px] overflow-hidden shadow-2xl relative z-10 animate-in zoom-in-95 duration-300 flex flex-col md:flex-row max-h-[90vh]">
-              <div className="w-full md:w-1/2 h-64 md:h-auto min-h-[250px] md:min-h-full shrink-0 relative bg-slate-100">
+              <div className="w-full md:w-1/2 h-64 md:h-auto min-h-[250px] shrink-0 relative bg-slate-100">
                 <img src={selectedProject.imageUrl} className="absolute inset-0 w-full h-full object-cover" alt={selectedProject.title} />
               </div>
               <div className="p-8 md:p-14 flex flex-col overflow-y-auto custom-scroll w-full">
@@ -632,21 +589,12 @@ const App: React.FC = () => {
                 <h3 className="text-3xl md:text-4xl font-black text-slate-900 mb-4 tracking-tighter uppercase leading-[0.9]">{selectedProject.title}</h3>
                 <p className="text-slate-500 font-medium italic mb-8 border-l-4 border-emerald-500 pl-5 text-sm md:text-base leading-relaxed">{selectedProject.description}</p>
                 <div className="space-y-6">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
-                    <span className="w-8 h-[1px] bg-slate-200"></span>
-                    Détails Techniques
-                  </h4>
-                  <ul className="space-y-4">
-                    {selectedProject.fullDetails.map((detail, idx) => (
-                      <li key={idx} className="flex gap-4 items-start group">
-                        <div className="w-8 h-8 bg-emerald-600 text-white rounded-xl flex items-center justify-center shrink-0 text-[11px] font-black shadow-lg shadow-emerald-200">{idx + 1}</div>
-                        <span className="text-sm md:text-base font-bold text-slate-700 leading-tight pt-1 group-hover:text-emerald-600 transition-colors">{detail}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="mt-auto pt-10 border-t border-slate-100 flex gap-4">
-                  <button onClick={() => {setSelectedProject(null); setView('CONTACT');}} className="flex-grow py-5 bg-[#064e3b] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-emerald-900 transition-all active:scale-95">Commander un projet similaire</button>
+                  {selectedProject.fullDetails.map((detail, idx) => (
+                    <div key={idx} className="flex gap-4 items-start">
+                      <div className="w-6 h-6 bg-emerald-600 text-white rounded-lg flex items-center justify-center shrink-0 text-[10px] font-black">{idx + 1}</div>
+                      <span className="text-sm font-bold text-slate-700">{detail}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -654,7 +602,7 @@ const App: React.FC = () => {
         )}
         
         <footer className="h-16 flex items-center justify-between px-10 bg-white border-t border-slate-100 text-[8px] font-black uppercase tracking-[0.3em] text-slate-300 shrink-0">
-          <p>© 2025 STE RACHIDI • SAFI • REALTIME HQ</p>
+          <p>© 2025 STE RACHIDI • SAFI • CORE SYSTEM</p>
           <div className="flex gap-4">
              <span>Status: {realtimeStatus}</span>
              <span>Region: Safi-MA</span>
