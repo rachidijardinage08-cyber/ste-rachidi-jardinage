@@ -57,39 +57,19 @@ const PROJECTS: Project[] = [
   }
 ];
 
-const QUALITY_PHASES = [
-  {
-    title: "Phase 01: Logistique & Sécurité",
-    points: [
-      { id: 1, t: "Propreté du Site", d: "Nettoyage systématique avant, pendant et après chaque intervention." },
-      { id: 6, t: "Conformité HSE", d: "Port des EPI et balisage de sécurité sur tout périmètre de travail." },
-      { id: 7, t: "Gestion des Déchets", d: "Évacuation écologique et tri des résidus verts vers centres agréés." }
-    ]
-  },
-  {
-    title: "Phase 02: Technique & Précision",
-    points: [
-      { id: 3, t: "Géométrie des Bordures", d: "Alignement au laser pour des séparations gazon/allées parfaites." },
-      { id: 4, t: "Performance d'Arrosage", d: "Test de pression et couverture de 100% de la zone ciblée." },
-      { id: 11, t: "Systèmes Électriques", d: "Isolation et test de fonctionnement de l'éclairage extérieur." }
-    ]
-  },
-  {
-    title: "Phase 03: Biologie & Végétal",
-    points: [
-      { id: 2, t: "Santé du Végétal", d: "Vérification rigoureuse de l'état racinaire et foliaire de chaque plante." },
-      { id: 8, t: "Équilibre Nutritif", d: "Dosage précis des engrais bio adapté à chaque type de sol." },
-      { id: 9, t: "Précision de Taille", d: "Coupes cicatrisantes pour préserver la vigueur des arbres et haies." }
-    ]
-  },
-  {
-    title: "Phase 04: Finitions & Livraison",
-    points: [
-      { id: 5, t: "Finition des Sols", d: "Contrôle d'étanchéité et de niveau pour les surfaces minérales." },
-      { id: 10, t: "Stabilité Structurelle", d: "Vérification de l'ancrage des gros sujets (palmiers/arbres)." },
-      { id: 12, t: "Validation Client", d: "Visite guidée finale et signature du procès-verbal de livraison." }
-    ]
-  }
+const QUALITY_ITEMS = [
+  { id: 1, icon: "🧹", t: "Nettoyage intégral", d: "Zéro déchet laissé sur place. Chantier propre chaque soir." },
+  { id: 2, icon: "🩺", t: "Bilan phytosanitaire", d: "Contrôle de santé pour chaque plante avant plantation." },
+  { id: 3, icon: "📐", t: "Bordures au laser", d: "Alignement millimétré des séparations et allées." },
+  { id: 4, icon: "💧", t: "Test d'irrigation", d: "Vérification individuelle de chaque goutteur et turbine." },
+  { id: 5, icon: "⚖️", t: "Niveaux & Drainage", d: "Évacuation des eaux pluviales testée sous 48h." },
+  { id: 6, icon: "🦺", t: "Sécurité HSE", d: "Équipements de protection et balisage 100% conformes." },
+  { id: 7, icon: "♻️", t: "Tri des déchets", d: "Valorisation des déchets verts en compostage certifié." },
+  { id: 8, icon: "🧪", t: "Analyse du sol", d: "Amendements organiques dosés sur mesure par parcelle." },
+  { id: 9, icon: "✂️", t: "Taille de précision", d: "Respect des périodes de sève pour une croissance saine." },
+  { id: 10, icon: "🏗️", t: "Ancrage des arbres", d: "Haubanage invisible pour palmiers et arbres de haute tige." },
+  { id: 11, icon: "💡", t: "Éclairage Basse Tension", d: "Test d'étanchéité IP68 sur tout le réseau extérieur." },
+  { id: 12, icon: "✍️", t: "Validation PV", d: "Signature finale après inspection point par point avec vous." }
 ];
 
 const LOGO_URL = "https://i.ibb.co/LdF8wDg0/Empreinte-verte-et-nature.png";
@@ -123,6 +103,7 @@ const App: React.FC = () => {
   const currentVisitorId = useRef<string | null>(localStorage.getItem('rachidi_visit_id'));
   const pagesTracked = useRef<Set<string>>(new Set());
 
+  // Logic pour le Real-time
   useEffect(() => {
     const timer = setTimeout(() => setIsAppLoading(false), 500);
     initVisitorTracking();
@@ -131,7 +112,7 @@ const App: React.FC = () => {
       setRealtimeStatus('CONNECTING');
       fetchData();
       
-      const channel = supabase.channel('rachidi-hq-realtime')
+      const channel = supabase.channel('rachidi-hq-main')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
           if (payload.eventType === 'INSERT') setMessages(prev => [payload.new as QuoteRequest, ...prev]);
           if (payload.eventType === 'DELETE') setMessages(prev => prev.filter(m => m.id !== payload.old.id));
@@ -141,9 +122,9 @@ const App: React.FC = () => {
           if (payload.eventType === 'UPDATE') setVisitorLogs(prev => prev.map(l => l.id === payload.new.id ? (payload.new as VisitorLog) : l));
         })
         .subscribe((status) => {
+          console.log("Supabase Status:", status);
           if (status === 'SUBSCRIBED') setRealtimeStatus('CONNECTED');
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRealtimeStatus('ERROR');
-          if (status === 'CLOSED') setRealtimeStatus('OFF');
         });
         
       return () => {
@@ -260,28 +241,19 @@ const App: React.FC = () => {
   };
 
   const navItems = [
-    { id: 'HOME', label: 'Accueil', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3' },
-    { id: 'SERVICES', label: 'Services', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6z' },
-    { id: 'PORTFOLIO', label: 'Projets', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14' },
-    { id: 'QUALITY', label: 'Qualité', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944' },
-    { id: 'CONTACT', label: 'Contact', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8' }
+    { id: 'HOME', label: 'Accueil', icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3" },
+    { id: 'SERVICES', label: 'Services', icon: "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" },
+    { id: 'PORTFOLIO', label: 'Projets', icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" },
+    { id: 'QUALITY', label: 'Qualité', icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944" },
+    { id: 'CONTACT', label: 'Contact', icon: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8" }
   ];
 
   const getStatusColor = () => {
     switch(realtimeStatus) {
-      case 'CONNECTED': return 'bg-emerald-500 animate-pulse';
-      case 'CONNECTING': return 'bg-amber-400 animate-bounce';
+      case 'CONNECTED': return 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]';
+      case 'CONNECTING': return 'bg-amber-400 animate-pulse';
       case 'ERROR': return 'bg-red-500';
       default: return 'bg-slate-300';
-    }
-  };
-
-  const getStatusText = () => {
-    switch(realtimeStatus) {
-      case 'CONNECTED': return 'Real-time Linked';
-      case 'CONNECTING': return 'Syncing...';
-      case 'ERROR': return 'Connection Error';
-      default: return 'Offline Mode';
     }
   };
 
@@ -327,10 +299,12 @@ const App: React.FC = () => {
             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-emerald-600 bg-emerald-50 rounded-lg"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16"/></svg></button>
             <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">{view}</h3>
           </div>
-          <div className="hidden md:flex items-center gap-6">
-             <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100">
+          <div className="flex items-center gap-6">
+             <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100">
                <span className={`w-2 h-2 rounded-full ${getStatusColor()}`}></span>
-               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{getStatusText()}</span>
+               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                 {realtimeStatus === 'CONNECTED' ? 'Système En Ligne' : realtimeStatus === 'CONNECTING' ? 'Synchronisation...' : realtimeStatus === 'ERROR' ? 'Erreur Réseau' : 'Mode Offline'}
+               </span>
              </div>
           </div>
         </header>
@@ -395,85 +369,39 @@ const App: React.FC = () => {
           )}
 
           {view === 'QUALITY' && (
-            <div className="max-w-6xl mx-auto view-enter py-12 pb-32">
-               <div className="text-center mb-24 relative">
-                  <div className="inline-block px-6 py-2 bg-emerald-50 border border-emerald-100 rounded-full mb-6">
-                    <span className="text-[10px] font-black text-emerald-700 uppercase tracking-[0.4em]">Audit de Performance & Qualité</span>
-                  </div>
-                  <h2 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tighter uppercase leading-[0.9] mb-8">
-                    Notre <span className="text-emerald-600 underline decoration-emerald-200 underline-offset-8">Protocole</span> de Livraison.
-                  </h2>
-                  <p className="text-slate-400 text-lg font-medium italic max-w-2xl mx-auto">
-                    Une rigueur absolue appliquée à chaque m² aménagé. Les 12 piliers de l'excellence STE RACHIDI.
+            <div className="max-w-7xl mx-auto view-enter py-12 space-y-24">
+               <div className="bg-[#064e3b] rounded-[60px] p-16 md:p-24 text-center text-white relative overflow-hidden shadow-2xl">
+                  <div className="absolute top-0 right-0 w-1/3 h-full bg-emerald-500/10 -skew-x-12 translate-x-1/2"></div>
+                  <h2 className="text-[11px] font-black uppercase tracking-[0.5em] text-emerald-400 mb-6">Chart Excellence RACHIDI</h2>
+                  <h3 className="text-5xl md:text-7xl font-black tracking-tighter uppercase mb-8 leading-none">12 Points de <span className="text-emerald-500">Contrôle.</span></h3>
+                  <p className="text-lg md:text-xl text-emerald-100/60 max-w-3xl mx-auto font-medium italic leading-relaxed">
+                    Chaque chantier fait l'objet d'un audit interne rigoureux avant livraison. Nous garantissons une finition sans compromis.
                   </p>
                </div>
                
-               <div className="relative border-l-2 border-emerald-100 ml-4 md:ml-8 pl-8 md:pl-16 space-y-32">
-                  {QUALITY_PHASES.map((phase, pIdx) => (
-                    <div key={pIdx} className="relative group">
-                      {/* Phase Marker */}
-                      <div className="absolute -left-[45px] md:-left-[77px] top-0 w-8 h-8 md:w-14 md:h-14 bg-[#064e3b] rounded-2xl flex items-center justify-center text-white border-4 border-white shadow-xl group-hover:bg-emerald-600 transition-colors duration-500">
-                        <span className="text-xs md:text-base font-black">0{pIdx + 1}</span>
-                      </div>
-                      
-                      <div className="mb-12">
-                         <h3 className="text-2xl md:text-4xl font-black text-slate-800 uppercase tracking-tighter mb-2 group-hover:text-emerald-700 transition-colors">{phase.title}</h3>
-                         <div className="w-20 h-1.5 bg-emerald-500 rounded-full"></div>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-10">
-                        {phase.points.map((point) => (
-                          <div key={point.id} className="bg-white p-8 md:p-10 rounded-[40px] border border-slate-50 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 flex flex-col group/card">
-                            <div className="flex justify-between items-start mb-8">
-                               <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center text-[10px] font-black group-hover/card:bg-emerald-100 group-hover/card:text-emerald-700 transition-colors">
-                                 {point.id < 10 ? `0${point.id}` : point.id}
-                               </div>
-                               <div className="w-6 h-6 rounded-full border-2 border-emerald-50 flex items-center justify-center group-hover/card:border-emerald-400 group-hover/card:bg-emerald-50 transition-all">
-                                  <svg className="w-3.5 h-3.5 text-emerald-400 opacity-0 group-hover/card:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" />
-                                  </svg>
-                               </div>
-                            </div>
-                            <h4 className="text-lg font-black text-slate-900 uppercase tracking-tighter mb-4 leading-tight group-hover/card:text-emerald-800">{point.t}</h4>
-                            <p className="text-[11px] text-slate-400 font-bold leading-relaxed mb-6 italic">{point.d}</p>
-                            <div className="mt-auto flex items-center gap-3">
-                               <div className="h-1 bg-emerald-50 flex-grow rounded-full overflow-hidden">
-                                  <div className="h-full bg-emerald-500 w-full translate-x-[-100%] group-hover/card:translate-x-0 transition-transform duration-700"></div>
-                               </div>
-                               <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest group-hover/card:text-emerald-500 transition-colors">Opérationnel</span>
-                            </div>
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                  {QUALITY_ITEMS.map((item) => (
+                    <div key={item.id} className="group bg-white p-10 rounded-[50px] border border-slate-100 shadow-sm hover:shadow-2xl transition-all duration-500 flex flex-col h-full hover:-translate-y-2">
+                       <div className="flex justify-between items-start mb-10">
+                          <div className="text-4xl bg-slate-50 w-20 h-20 rounded-[30px] flex items-center justify-center group-hover:bg-emerald-50 transition-colors shadow-inner">
+                            {item.icon}
                           </div>
-                        ))}
-                      </div>
+                          <span className="text-[40px] font-black text-slate-50 group-hover:text-emerald-50 transition-colors leading-none">
+                            {item.id < 10 ? `0${item.id}` : item.id}
+                          </span>
+                       </div>
+                       <h4 className="text-xl font-black text-slate-800 uppercase tracking-tighter mb-4 group-hover:text-emerald-600 transition-colors">{item.t}</h4>
+                       <p className="text-sm text-slate-400 font-bold leading-relaxed mb-10 italic">{item.d}</p>
+                       <div className="mt-auto pt-6 border-t border-slate-50 flex items-center gap-3">
+                          <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
+                          <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">Critère Obligatoire</span>
+                       </div>
                     </div>
                   ))}
                </div>
 
-               <div className="mt-32 bg-[#064e3b] rounded-[60px] md:rounded-[100px] p-12 md:p-24 text-center text-white relative overflow-hidden shadow-[0_50px_100px_-20px_rgba(6,78,59,0.3)]">
-                  <div className="absolute top-0 right-0 w-full h-full bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.1),transparent)]"></div>
-                  <div className="absolute bottom-0 left-0 w-full h-full bg-[radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.1),transparent)]"></div>
-                  
-                  <div className="relative z-10 space-y-8">
-                    <div className="w-24 h-24 bg-emerald-500/20 backdrop-blur-xl rounded-[40px] flex items-center justify-center mx-auto mb-10 border border-emerald-500/30">
-                       <svg className="w-12 h-12 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                       </svg>
-                    </div>
-                    <h4 className="text-[12px] font-black uppercase tracking-[0.6em] text-emerald-400">Rachidi Quality Assurance</h4>
-                    <p className="text-3xl md:text-5xl font-black tracking-tighter uppercase max-w-4xl mx-auto leading-tight">
-                      Si un seul point de contrôle est jugé non-conforme, l'équipe technique intervient en <span className="text-emerald-400">48h maximum</span> pour correction gratuite.
-                    </p>
-                    <div className="pt-10 flex flex-wrap justify-center gap-6">
-                       <div className="flex items-center gap-3 px-6 py-3 bg-white/5 rounded-2xl border border-white/10 text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm">
-                         <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
-                         Audit Interne Hebdomadaire
-                       </div>
-                       <div className="flex items-center gap-3 px-6 py-3 bg-white/5 rounded-2xl border border-white/10 text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm">
-                         <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
-                         Sourcing Matières Premium
-                       </div>
-                    </div>
-                  </div>
+               <div className="text-center py-12 border-2 border-dashed border-emerald-200 rounded-[50px] bg-emerald-50/30">
+                  <p className="text-sm font-black text-emerald-800 uppercase tracking-[0.2em]">Votre satisfaction est contractuelle. Toute non-conformité est rectifiée sous 24h.</p>
                </div>
             </div>
           )}
@@ -562,9 +490,13 @@ const App: React.FC = () => {
               </div>
               
               {!isSupabaseConfigured && (
-                <div className="p-6 bg-red-50 border border-red-100 rounded-[30px] flex items-center gap-4 text-red-600">
-                   <svg className="w-6 h-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                   <p className="text-[10px] font-black uppercase tracking-widest">Alerte System: Supabase non configuré. Les données sont en mode lecture-seule ou locales.</p>
+                <div className="p-10 bg-red-50 border border-red-200 rounded-[40px] flex flex-col items-center gap-6 text-red-600 text-center animate-pulse">
+                   <svg className="w-16 h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                   <div className="space-y-2">
+                     <p className="text-lg font-black uppercase tracking-widest">Configuration Manquante</p>
+                     <p className="text-sm font-medium italic">Les variables SUPABASE_URL et SUPABASE_ANON_KEY ne sont pas définies dans process.env.</p>
+                     <p className="text-xs text-red-400 font-bold pt-4">Veuillez ajouter ces secrets dans les paramètres de votre environnement pour activer le Real-time.</p>
+                   </div>
                 </div>
               )}
 
@@ -590,6 +522,7 @@ const App: React.FC = () => {
                       </button>
                     </div>
                   ))}
+                  {messages.length === 0 && <div className="text-center py-24 text-slate-300 font-black uppercase tracking-[0.3em]">Aucun message reçu</div>}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -612,6 +545,7 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   ))}
+                  {visitorLogs.length === 0 && <div className="text-center py-24 text-slate-300 font-black uppercase tracking-[0.3em] col-span-full">Aucun visiteur enregistré</div>}
                 </div>
               )}
             </div>
@@ -624,13 +558,7 @@ const App: React.FC = () => {
             <div className="absolute inset-0 bg-[#064e3b]/40 backdrop-blur-md" onClick={() => setSelectedProject(null)}></div>
             <div className="bg-white w-full max-w-5xl rounded-[40px] md:rounded-[60px] overflow-hidden shadow-2xl relative z-10 animate-in zoom-in-95 duration-300 flex flex-col md:flex-row max-h-[90vh]">
               <div className="w-full md:w-1/2 h-64 md:h-auto min-h-[250px] md:min-h-full shrink-0 relative bg-slate-100">
-                <img 
-                  src={selectedProject.imageUrl} 
-                  className="absolute inset-0 w-full h-full object-cover" 
-                  alt={selectedProject.title}
-                  onLoad={(e) => (e.currentTarget.style.opacity = '1')}
-                  style={{ opacity: 0, transition: 'opacity 0.5s ease-in-out' }}
-                />
+                <img src={selectedProject.imageUrl} className="absolute inset-0 w-full h-full object-cover" alt={selectedProject.title} />
               </div>
               
               <div className="p-8 md:p-14 flex flex-col overflow-y-auto custom-scroll w-full">
@@ -649,7 +577,7 @@ const App: React.FC = () => {
                 <div className="space-y-6">
                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
                     <span className="w-8 h-[1px] bg-slate-200"></span>
-                    Explication Technique
+                    Détails Techniques
                   </h4>
                   <ul className="space-y-4">
                     {selectedProject.fullDetails.map((detail, idx) => (
@@ -672,7 +600,7 @@ const App: React.FC = () => {
         <footer className="h-16 flex items-center justify-between px-10 bg-white border-t border-slate-100 text-[8px] font-black uppercase tracking-[0.3em] text-slate-300 shrink-0">
           <p>© 2025 STE RACHIDI • SAFI • REALTIME HQ</p>
           <div className="flex gap-4">
-             <span>Status: Stable</span>
+             <span>Status: {realtimeStatus}</span>
              <span>Region: Safi-MA</span>
           </div>
         </footer>
