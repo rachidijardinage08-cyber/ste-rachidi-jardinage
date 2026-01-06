@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppView, ServiceCategory, Project, QuoteRequest, VisitorLog } from './types';
 import ProjectCard from './components/ProjectCard';
-import { supabase, isSupabaseConfigured } from './services/supabaseClient';
+import { supabase, isSupabaseConfigured, getSafeConfigStatus, saveFallbackKeys, clearFallbackKeys } from './services/supabaseClient';
 
 const SERVICES: ServiceCategory[] = [
   {
@@ -92,10 +92,14 @@ const App: React.FC = () => {
   const [visitorLogs, setVisitorLogs] = useState<VisitorLog[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [dbLoading, setDbLoading] = useState(false);
-  const [adminSubTab, setAdminSubTab] = useState<'MESSAGES' | 'VISITS'>('MESSAGES');
+  const [adminSubTab, setAdminSubTab] = useState<'MESSAGES' | 'VISITS' | 'DIAGNOSTIC'>('MESSAGES');
   const [phoneError, setPhoneError] = useState('');
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('OFF');
   
+  // States pour la config manuelle
+  const [tempUrl, setTempUrl] = useState(getSafeConfigStatus().urlValue);
+  const [tempKey, setTempKey] = useState(getSafeConfigStatus().keyValue);
+
   const [formData, setFormData] = useState<QuoteRequest>({
     clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: ''
   });
@@ -103,38 +107,41 @@ const App: React.FC = () => {
   const currentVisitorId = useRef<string | null>(localStorage.getItem('rachidi_visit_id'));
   const pagesTracked = useRef<Set<string>>(new Set());
 
-  // Logic pour le Real-time
   useEffect(() => {
     const timer = setTimeout(() => setIsAppLoading(false), 500);
     initVisitorTracking();
     
     if (isSupabaseConfigured && supabase) {
-      setRealtimeStatus('CONNECTING');
-      fetchData();
-      
-      const channel = supabase.channel('rachidi-hq-main')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
-          if (payload.eventType === 'INSERT') setMessages(prev => [payload.new as QuoteRequest, ...prev]);
-          if (payload.eventType === 'DELETE') setMessages(prev => prev.filter(m => m.id !== payload.old.id));
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'visitor_logs' }, (payload) => {
-          if (payload.eventType === 'INSERT') setVisitorLogs(prev => [payload.new as VisitorLog, ...prev]);
-          if (payload.eventType === 'UPDATE') setVisitorLogs(prev => prev.map(l => l.id === payload.new.id ? (payload.new as VisitorLog) : l));
-        })
-        .subscribe((status) => {
-          console.log("Supabase Status:", status);
-          if (status === 'SUBSCRIBED') setRealtimeStatus('CONNECTED');
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRealtimeStatus('ERROR');
-        });
-        
-      return () => {
-        supabase.removeChannel(channel);
-        clearTimeout(timer);
-      };
+      connectToRealtime();
     } else {
       setRealtimeStatus('OFF');
     }
+    
+    return () => clearTimeout(timer);
   }, []);
+
+  const connectToRealtime = () => {
+    if (!supabase) return;
+    setRealtimeStatus('CONNECTING');
+    fetchData();
+    
+    const channel = supabase.channel('rachidi-hq-main')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
+        if (payload.eventType === 'INSERT') setMessages(prev => [payload.new as QuoteRequest, ...prev]);
+        if (payload.eventType === 'DELETE') setMessages(prev => prev.filter(m => m.id !== payload.old.id));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'visitor_logs' }, (payload) => {
+        if (payload.eventType === 'INSERT') setVisitorLogs(prev => [payload.new as VisitorLog, ...prev]);
+        if (payload.eventType === 'UPDATE') setVisitorLogs(prev => prev.map(l => l.id === payload.new.id ? (payload.new as VisitorLog) : l));
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setRealtimeStatus('CONNECTED');
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setRealtimeStatus('ERROR');
+          setTimeout(connectToRealtime, 5000);
+        }
+      });
+  };
 
   useEffect(() => {
     if (view === 'ADMIN' || view === 'LOGIN') return;
@@ -241,36 +248,12 @@ const App: React.FC = () => {
   };
 
   const navItems = [
-    { id: 'HOME', label: 'Accueil', icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3" },
-    { id: 'SERVICES', label: 'Services', icon: "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" },
-    { id: 'PORTFOLIO', label: 'Projets', icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" },
-    { id: 'QUALITY', label: 'Qualité', icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944" },
-    { id: 'CONTACT', label: 'Contact', icon: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8" }
+    { id: 'HOME', label: 'Accueil', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3' },
+    { id: 'SERVICES', label: 'Services', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6z' },
+    { id: 'PORTFOLIO', label: 'Projets', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14' },
+    { id: 'QUALITY', label: 'Qualité', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944' },
+    { id: 'CONTACT', label: 'Contact', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8' }
   ];
-
-  const getStatusColor = () => {
-    switch(realtimeStatus) {
-      case 'CONNECTED': return 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]';
-      case 'CONNECTING': return 'bg-amber-400 animate-pulse';
-      case 'ERROR': return 'bg-red-500';
-      default: return 'bg-slate-300';
-    }
-  };
-
-  if (isAppLoading) {
-    return (
-      <div className="fixed inset-0 bg-[#064e3b] z-[200] flex items-center justify-center">
-        <div className="text-center">
-          <img src={LOGO_URL} className="w-32 animate-pulse mb-4" alt="Logo" />
-          <div className="flex items-center gap-2 justify-center">
-            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce"></span>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-screen w-screen bg-slate-100 text-slate-800 overflow-hidden font-sans">
@@ -300,10 +283,13 @@ const App: React.FC = () => {
             <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">{view}</h3>
           </div>
           <div className="flex items-center gap-6">
-             <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100">
-               <span className={`w-2 h-2 rounded-full ${getStatusColor()}`}></span>
+             <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100 cursor-pointer" onClick={() => {
+               if (view === 'ADMIN') setAdminSubTab('DIAGNOSTIC');
+               else setView('LOGIN');
+             }}>
+               <span className={`w-2 h-2 rounded-full ${realtimeStatus === 'CONNECTED' ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></span>
                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                 {realtimeStatus === 'CONNECTED' ? 'Système En Ligne' : realtimeStatus === 'CONNECTING' ? 'Synchronisation...' : realtimeStatus === 'ERROR' ? 'Erreur Réseau' : 'Mode Offline'}
+                 {realtimeStatus === 'CONNECTED' ? 'Système En Ligne' : 'Mode Offline / Setup Required'}
                </span>
              </div>
           </div>
@@ -329,6 +315,193 @@ const App: React.FC = () => {
             </div>
           )}
 
+          {view === 'QUALITY' && (
+            <div className="max-w-7xl mx-auto view-enter space-y-16 py-12 pb-32">
+               <div className="text-center max-w-4xl mx-auto mb-20">
+                  <div className="inline-flex items-center gap-3 px-4 py-2 bg-emerald-50 rounded-full border border-emerald-100 mb-6">
+                    <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 12l2 2 4-4" /></svg>
+                    <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">RACHIDI QUALITY ASSURANCE 2025</span>
+                  </div>
+                  <h2 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tighter uppercase leading-[0.9] mb-8">Standard de <span className="text-emerald-600 underline decoration-emerald-200 underline-offset-8">Confiance.</span></h2>
+                  <p className="text-slate-400 text-lg font-medium italic">Nous appliquons 12 points de contrôle rigoureux sur chaque chantier à Safi pour garantir l'excellence.</p>
+               </div>
+               
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                  {QUALITY_ITEMS.map((item) => (
+                    <div key={item.id} className="group bg-white p-10 rounded-[50px] border border-slate-50 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 flex flex-col h-full overflow-hidden relative">
+                       <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-[100px] -translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
+                       <div className="flex justify-between items-start mb-10 relative z-10">
+                          <div className="text-4xl bg-slate-50 w-20 h-20 rounded-[30px] flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all duration-500 shadow-inner">
+                            {item.icon}
+                          </div>
+                          <span className="text-4xl font-black text-slate-100 group-hover:text-emerald-200 transition-colors leading-none">
+                            {item.id < 10 ? `0${item.id}` : item.id}
+                          </span>
+                       </div>
+                       <h4 className="text-xl font-black text-slate-800 uppercase tracking-tighter mb-4 group-hover:text-emerald-700 transition-colors relative z-10">{item.t}</h4>
+                       <p className="text-sm text-slate-400 font-bold leading-relaxed mb-10 italic relative z-10">{item.d}</p>
+                       <div className="mt-auto pt-6 border-t border-slate-50 flex items-center gap-3 relative z-10">
+                          <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                          <span className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Critère de Certification</span>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+
+               <div className="bg-slate-900 rounded-[60px] p-12 md:p-24 text-center text-white relative overflow-hidden shadow-2xl">
+                  <div className="absolute top-0 right-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
+                  <h4 className="text-[12px] font-black uppercase tracking-[0.5em] text-emerald-400 mb-6">Notre Engagement</h4>
+                  <p className="text-3xl md:text-5xl font-black tracking-tighter uppercase max-w-4xl mx-auto leading-tight">
+                    Chaque m² est audité. Une erreur ? Nous intervenons en <span className="text-emerald-400">48h chrono</span> gratuitement pour rectification.
+                  </p>
+               </div>
+            </div>
+          )}
+
+          {view === 'ADMIN' && (
+            <div className="max-w-6xl mx-auto view-enter space-y-8 pb-24">
+              <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                <div>
+                   <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">CONTROL <span className="text-emerald-600">HUB</span></h2>
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Safi Live Command Center</p>
+                </div>
+                <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
+                   <button onClick={() => setAdminSubTab('MESSAGES')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'MESSAGES' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Messages ({messages.length})</button>
+                   <button onClick={() => setAdminSubTab('VISITS')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'VISITS' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Visiteurs ({visitorLogs.length})</button>
+                   <button onClick={() => setAdminSubTab('DIAGNOSTIC')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'DIAGNOSTIC' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Diagnostic & Setup</button>
+                </div>
+              </div>
+
+              {adminSubTab === 'DIAGNOSTIC' && (
+                <div className="space-y-8 animate-in fade-in duration-500">
+                  <div className="bg-white p-10 rounded-[50px] border border-slate-100 shadow-xl space-y-10">
+                     <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Configuration des Services <span className="text-indigo-600">Cloud</span></h3>
+                     
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="p-6 bg-slate-50 rounded-[30px] border border-slate-100">
+                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Variables d'Environnement</span>
+                           <div className="flex items-center gap-3">
+                              <span className={`w-3 h-3 rounded-full ${getSafeConfigStatus().configured ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
+                              <span className="font-black text-slate-800">{getSafeConfigStatus().configured ? 'CONFIGURÉ' : 'MANQUANT'}</span>
+                           </div>
+                        </div>
+                        <div className="p-6 bg-slate-50 rounded-[30px] border border-slate-100">
+                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Statut Realtime</span>
+                           <div className="flex items-center gap-3">
+                              <span className={`w-3 h-3 rounded-full ${realtimeStatus === 'CONNECTED' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
+                              <span className="font-black text-slate-800 uppercase">{realtimeStatus}</span>
+                           </div>
+                        </div>
+                        <div className="p-6 bg-slate-50 rounded-[30px] border border-slate-100">
+                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Mode de Données</span>
+                           <span className="font-black text-emerald-600">{getSafeConfigStatus().configured ? 'DATABASE ACTIVE' : 'MODE LECTURE SEULE'}</span>
+                        </div>
+                     </div>
+
+                     {!getSafeConfigStatus().configured && (
+                       <div className="bg-amber-50 p-8 rounded-[40px] border border-amber-100 space-y-6">
+                          <div>
+                             <h4 className="text-lg font-black text-amber-900 uppercase tracking-tighter mb-2">Setup Manuel Temporaire</h4>
+                             <p className="text-xs font-bold text-amber-700 italic">Si vous ne pouvez pas configurer Vercel immédiatement, entrez vos clés ici. Elles seront sauvegardées localement sur ce navigateur uniquement.</p>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <input 
+                                type="text" 
+                                placeholder="SUPABASE_URL (https://...)" 
+                                className="bg-white border border-amber-200 p-4 rounded-xl text-xs font-mono outline-none focus:border-amber-500"
+                                value={tempUrl}
+                                onChange={(e) => setTempUrl(e.target.value)}
+                             />
+                             <input 
+                                type="password" 
+                                placeholder="SUPABASE_ANON_KEY (Key...)" 
+                                className="bg-white border border-amber-200 p-4 rounded-xl text-xs font-mono outline-none focus:border-amber-500"
+                                value={tempKey}
+                                onChange={(e) => setTempKey(e.target.value)}
+                             />
+                          </div>
+                          <div className="flex gap-4">
+                            <button 
+                                onClick={() => saveFallbackKeys(tempUrl, tempKey)}
+                                className="px-8 py-4 bg-amber-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 transition-all"
+                            >
+                               Sauvegarder & Recharger
+                            </button>
+                            <button 
+                                onClick={() => clearFallbackKeys()}
+                                className="px-8 py-4 bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-300 transition-all"
+                            >
+                               Effacer Config Locale
+                            </button>
+                          </div>
+                       </div>
+                     )}
+
+                     <div className="bg-indigo-50 p-8 rounded-[40px] border border-indigo-100 space-y-4">
+                        <h4 className="text-xl font-black text-indigo-900 uppercase tracking-tighter">Instructions Vercel (Permanent)</h4>
+                        <ol className="text-sm font-bold text-indigo-700 space-y-3 list-decimal list-inside">
+                           <li>Tableau de bord <strong>Vercel</strong> -> Cliquez sur votre projet.</li>
+                           <li><strong>Settings</strong> -> <strong>Environment Variables</strong>.</li>
+                           <li>Ajoutez <code>SUPABASE_URL</code> et <code>SUPABASE_ANON_KEY</code>.</li>
+                           <li><strong>Re-déployez</strong> votre projet pour appliquer les changements à tous les utilisateurs.</li>
+                        </ol>
+                     </div>
+                  </div>
+                </div>
+              )}
+
+              {adminSubTab === 'MESSAGES' && (
+                <div className="grid grid-cols-1 gap-4">
+                  {messages.map((msg) => (
+                    <div key={msg.id} className="bg-white p-8 rounded-[35px] border border-slate-100 shadow-sm flex flex-col md:flex-row gap-6 items-start animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="flex-grow space-y-3">
+                        <div className="flex items-center gap-3">
+                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black rounded-lg uppercase tracking-widest">{msg.serviceType}</span>
+                          <span className="text-[9px] text-slate-300 font-bold uppercase">{new Date(msg.timestamp!).toLocaleString('fr-FR')}</span>
+                        </div>
+                        <h4 className="text-xl font-black text-slate-900">{msg.clientName}</h4>
+                        <div className="flex flex-wrap gap-5 text-xs font-bold">
+                          <a href={`tel:${msg.phone}`} className="text-emerald-600 flex items-center gap-2">📞 {msg.phone}</a>
+                          <span className="text-slate-400">✉️ {msg.email}</span>
+                          <span className="text-slate-900 font-black px-2 py-0.5 bg-slate-100 rounded-md">{msg.budget} DH</span>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-2xl text-[13px] italic text-slate-600 border border-slate-100">"{msg.subject}"</div>
+                      </div>
+                      <button onClick={() => deleteMessage(msg.id!)} className="p-4 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                      </button>
+                    </div>
+                  ))}
+                  {messages.length === 0 && <div className="text-center py-24 text-slate-300 font-black uppercase tracking-[0.3em]">Aucun message reçu (En attente de connexion...)</div>}
+                </div>
+              )}
+              
+              {adminSubTab === 'VISITS' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {visitorLogs.map((log) => (
+                    <div key={log.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4 hover:border-emerald-200 transition-all animate-in zoom-in-95">
+                      <div className="flex justify-between items-start">
+                        <div className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest">VISITEUR</div>
+                        <span className="text-[9px] font-black text-slate-300 uppercase">{new Date(log.timestamp).toLocaleTimeString('fr-FR')}</span>
+                      </div>
+                      <div>
+                        <h5 className="text-lg font-black text-slate-900 tracking-tighter leading-none">{log.ip}</h5>
+                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mt-1">📍 {log.location}</p>
+                      </div>
+                      <div className="pt-4 border-t border-slate-50 flex flex-wrap gap-2">
+                        {log.pagesViewed.map((p, idx) => (
+                          <span key={idx} className={`px-2 py-0.5 ${idx === log.pagesViewed.length - 1 ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'} text-[8px] font-black rounded-md uppercase`}>{p}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {visitorLogs.length === 0 && <div className="text-center py-24 text-slate-300 font-black uppercase tracking-[0.3em] col-span-full">Aucun visiteur enregistré</div>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ... Rest of the views (SERVICES, PORTFOLIO, CONTACT, LOGIN) ... */}
           {view === 'SERVICES' && (
             <div className="max-w-7xl mx-auto view-enter space-y-16 py-12">
               <div className="text-center max-w-2xl mx-auto mb-16">
@@ -365,44 +538,6 @@ const App: React.FC = () => {
                   <ProjectCard key={i} project={project} onExplore={() => setSelectedProject(project)} />
                 ))}
               </div>
-            </div>
-          )}
-
-          {view === 'QUALITY' && (
-            <div className="max-w-7xl mx-auto view-enter py-12 space-y-24">
-               <div className="bg-[#064e3b] rounded-[60px] p-16 md:p-24 text-center text-white relative overflow-hidden shadow-2xl">
-                  <div className="absolute top-0 right-0 w-1/3 h-full bg-emerald-500/10 -skew-x-12 translate-x-1/2"></div>
-                  <h2 className="text-[11px] font-black uppercase tracking-[0.5em] text-emerald-400 mb-6">Chart Excellence RACHIDI</h2>
-                  <h3 className="text-5xl md:text-7xl font-black tracking-tighter uppercase mb-8 leading-none">12 Points de <span className="text-emerald-500">Contrôle.</span></h3>
-                  <p className="text-lg md:text-xl text-emerald-100/60 max-w-3xl mx-auto font-medium italic leading-relaxed">
-                    Chaque chantier fait l'objet d'un audit interne rigoureux avant livraison. Nous garantissons une finition sans compromis.
-                  </p>
-               </div>
-               
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                  {QUALITY_ITEMS.map((item) => (
-                    <div key={item.id} className="group bg-white p-10 rounded-[50px] border border-slate-100 shadow-sm hover:shadow-2xl transition-all duration-500 flex flex-col h-full hover:-translate-y-2">
-                       <div className="flex justify-between items-start mb-10">
-                          <div className="text-4xl bg-slate-50 w-20 h-20 rounded-[30px] flex items-center justify-center group-hover:bg-emerald-50 transition-colors shadow-inner">
-                            {item.icon}
-                          </div>
-                          <span className="text-[40px] font-black text-slate-50 group-hover:text-emerald-50 transition-colors leading-none">
-                            {item.id < 10 ? `0${item.id}` : item.id}
-                          </span>
-                       </div>
-                       <h4 className="text-xl font-black text-slate-800 uppercase tracking-tighter mb-4 group-hover:text-emerald-600 transition-colors">{item.t}</h4>
-                       <p className="text-sm text-slate-400 font-bold leading-relaxed mb-10 italic">{item.d}</p>
-                       <div className="mt-auto pt-6 border-t border-slate-50 flex items-center gap-3">
-                          <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
-                          <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">Critère Obligatoire</span>
-                       </div>
-                    </div>
-                  ))}
-               </div>
-
-               <div className="text-center py-12 border-2 border-dashed border-emerald-200 rounded-[50px] bg-emerald-50/30">
-                  <p className="text-sm font-black text-emerald-800 uppercase tracking-[0.2em]">Votre satisfaction est contractuelle. Toute non-conformité est rectifiée sous 24h.</p>
-               </div>
             </div>
           )}
 
@@ -475,81 +610,6 @@ const App: React.FC = () => {
               </div>
             </div>
           )}
-
-          {view === 'ADMIN' && (
-            <div className="max-w-6xl mx-auto view-enter space-y-8 pb-24">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                <div>
-                  <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">CONTROL <span className="text-emerald-600">HUB</span></h2>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Safi Live Command Center</p>
-                </div>
-                <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
-                   <button onClick={() => setAdminSubTab('MESSAGES')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'MESSAGES' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Messages ({messages.length})</button>
-                   <button onClick={() => setAdminSubTab('VISITS')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'VISITS' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Visiteurs ({visitorLogs.length})</button>
-                </div>
-              </div>
-              
-              {!isSupabaseConfigured && (
-                <div className="p-10 bg-red-50 border border-red-200 rounded-[40px] flex flex-col items-center gap-6 text-red-600 text-center animate-pulse">
-                   <svg className="w-16 h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                   <div className="space-y-2">
-                     <p className="text-lg font-black uppercase tracking-widest">Configuration Manquante</p>
-                     <p className="text-sm font-medium italic">Les variables SUPABASE_URL et SUPABASE_ANON_KEY ne sont pas définies dans process.env.</p>
-                     <p className="text-xs text-red-400 font-bold pt-4">Veuillez ajouter ces secrets dans les paramètres de votre environnement pour activer le Real-time.</p>
-                   </div>
-                </div>
-              )}
-
-              {adminSubTab === 'MESSAGES' ? (
-                <div className="grid grid-cols-1 gap-4">
-                  {messages.map((msg) => (
-                    <div key={msg.id} className="bg-white p-8 rounded-[35px] border border-slate-100 shadow-sm flex flex-col md:flex-row gap-6 items-start animate-in fade-in slide-in-from-right-4 duration-300">
-                      <div className="flex-grow space-y-3">
-                        <div className="flex items-center gap-3">
-                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black rounded-lg uppercase tracking-widest">{msg.serviceType}</span>
-                          <span className="text-[9px] text-slate-300 font-bold uppercase">{new Date(msg.timestamp!).toLocaleString('fr-FR')}</span>
-                        </div>
-                        <h4 className="text-xl font-black text-slate-900">{msg.clientName}</h4>
-                        <div className="flex flex-wrap gap-5 text-xs font-bold">
-                          <a href={`tel:${msg.phone}`} className="text-emerald-600 flex items-center gap-2">📞 {msg.phone}</a>
-                          <span className="text-slate-400">✉️ {msg.email}</span>
-                          <span className="text-slate-900 font-black px-2 py-0.5 bg-slate-100 rounded-md">{msg.budget} DH</span>
-                        </div>
-                        <div className="bg-slate-50 p-4 rounded-2xl text-[13px] italic text-slate-600 border border-slate-100">"{msg.subject}"</div>
-                      </div>
-                      <button onClick={() => deleteMessage(msg.id!)} className="p-4 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all">
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                      </button>
-                    </div>
-                  ))}
-                  {messages.length === 0 && <div className="text-center py-24 text-slate-300 font-black uppercase tracking-[0.3em]">Aucun message reçu</div>}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {visitorLogs.map((log) => (
-                    <div key={log.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4 hover:border-emerald-200 transition-all animate-in zoom-in-95">
-                      <div className="flex justify-between items-start">
-                        <div className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest">En Ligne</div>
-                        <span className="text-[9px] font-black text-slate-300 uppercase">{new Date(log.timestamp).toLocaleTimeString('fr-FR')}</span>
-                      </div>
-                      <div>
-                        <h5 className="text-lg font-black text-slate-900 tracking-tighter leading-none">{log.ip}</h5>
-                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mt-1">📍 {log.location}</p>
-                      </div>
-                      <div className="pt-4 border-t border-slate-50">
-                        <div className="flex flex-wrap gap-1.5">
-                          {(log.pagesViewed || []).map((p, idx) => (
-                            <span key={idx} className={`px-2 py-0.5 ${idx === log.pagesViewed.length - 1 ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'} text-[8px] font-black rounded-md uppercase`}>{p}</span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {visitorLogs.length === 0 && <div className="text-center py-24 text-slate-300 font-black uppercase tracking-[0.3em] col-span-full">Aucun visiteur enregistré</div>}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Modal d'explication des projets */}
@@ -560,7 +620,6 @@ const App: React.FC = () => {
               <div className="w-full md:w-1/2 h-64 md:h-auto min-h-[250px] md:min-h-full shrink-0 relative bg-slate-100">
                 <img src={selectedProject.imageUrl} className="absolute inset-0 w-full h-full object-cover" alt={selectedProject.title} />
               </div>
-              
               <div className="p-8 md:p-14 flex flex-col overflow-y-auto custom-scroll w-full">
                 <div className="flex justify-between items-start mb-8">
                    <div className="flex flex-wrap gap-2">
@@ -570,10 +629,8 @@ const App: React.FC = () => {
                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
                    </button>
                 </div>
-                
                 <h3 className="text-3xl md:text-4xl font-black text-slate-900 mb-4 tracking-tighter uppercase leading-[0.9]">{selectedProject.title}</h3>
                 <p className="text-slate-500 font-medium italic mb-8 border-l-4 border-emerald-500 pl-5 text-sm md:text-base leading-relaxed">{selectedProject.description}</p>
-                
                 <div className="space-y-6">
                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
                     <span className="w-8 h-[1px] bg-slate-200"></span>
@@ -588,7 +645,6 @@ const App: React.FC = () => {
                     ))}
                   </ul>
                 </div>
-                
                 <div className="mt-auto pt-10 border-t border-slate-100 flex gap-4">
                   <button onClick={() => {setSelectedProject(null); setView('CONTACT');}} className="flex-grow py-5 bg-[#064e3b] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-emerald-900 transition-all active:scale-95">Commander un projet similaire</button>
                 </div>
