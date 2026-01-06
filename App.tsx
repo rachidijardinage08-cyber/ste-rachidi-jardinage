@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppView, ServiceCategory, Project, QuoteRequest, VisitorLog } from './types';
 import ProjectCard from './components/ProjectCard';
-import { GoogleGenAI } from "@google/genai";
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 
 const SERVICES: ServiceCategory[] = [
@@ -81,7 +80,7 @@ const App: React.FC = () => {
   const currentVisitorId = useRef<string | null>(localStorage.getItem('rachidi_visit_id'));
   const pagesTracked = useRef<Set<string>>(new Set());
 
-  // Real-time synchronization Effect
+  // Gestion Real-time s7i7a
   useEffect(() => {
     const loadTimer = setTimeout(() => setIsAppLoading(false), 1800);
     initVisitorTracking();
@@ -89,34 +88,28 @@ const App: React.FC = () => {
     if (isSupabaseConfigured && supabase) {
       fetchData();
       
-      // Subscribe to messages
-      const msgChannel = supabase
-        .channel('schema-db-changes')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-          setMessages(prev => [payload.new as QuoteRequest, ...prev]);
-          // Audio alert for new message can be added here if desired
+      // Canal de synchronisation en temps réel pour toutes les tables publiques
+      const channel = supabase.channel('realtime-rachidi')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setMessages(prev => [payload.new as QuoteRequest, ...prev]);
+          } else if (payload.eventType === 'DELETE') {
+            setMessages(prev => prev.filter(m => m.id !== payload.old.id));
+          }
         })
-        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => {
-          setMessages(prev => prev.filter(m => m.id !== payload.old.id));
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'visitor_logs' }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setVisitorLogs(prev => [payload.new as VisitorLog, ...prev]);
+          } else if (payload.eventType === 'UPDATE') {
+            setVisitorLogs(prev => prev.map(l => l.id === payload.new.id ? (payload.new as VisitorLog) : l));
+          }
         })
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') setIsRealtimeActive(true);
         });
 
-      // Subscribe to visitors
-      const visitChannel = supabase
-        .channel('visitor-updates')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'visitor_logs' }, (payload) => {
-          setVisitorLogs(prev => [payload.new as VisitorLog, ...prev]);
-        })
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'visitor_logs' }, (payload) => {
-          setVisitorLogs(prev => prev.map(l => l.id === payload.new.id ? (payload.new as VisitorLog) : l));
-        })
-        .subscribe();
-
       return () => {
-        supabase.removeChannel(msgChannel);
-        supabase.removeChannel(visitChannel);
+        supabase.removeChannel(channel);
         clearTimeout(loadTimer);
       };
     } else {
@@ -223,6 +216,10 @@ const App: React.FC = () => {
   const deleteMessage = async (id: string) => {
     if (isSupabaseConfigured && supabase) {
       await supabase.from('messages').delete().eq('id', id);
+    } else {
+      const updated = messages.filter(m => m.id !== id);
+      setMessages(updated);
+      localStorage.setItem('rachidi_messages', JSON.stringify(updated));
     }
   };
 
@@ -230,9 +227,9 @@ const App: React.FC = () => {
     let val = e.target.value.replace(/\D/g, '').slice(0, 10);
     setFormData({ ...formData, phone: val });
     if (val.length > 0 && !/^(05|06|07)/.test(val)) {
-      setPhoneError('Le numéro doit commencer par 05, 06 ou 07');
+      setPhoneError('Doit commencer par 05, 06 ou 07');
     } else if (val.length > 0 && val.length < 10) {
-      setPhoneError('Le numéro doit comporter 10 chiffres');
+      setPhoneError('10 chiffres requis');
     } else {
       setPhoneError('');
     }
@@ -241,14 +238,19 @@ const App: React.FC = () => {
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!/^(05|06|07)[0-9]{8}$/.test(formData.phone)) {
-      setPhoneError('Numéro invalide (doit être 05/06/07 + 8 chiffres)');
+      setPhoneError('Numéro invalide (ex: 0612345678)');
       return;
     }
     setDbLoading(true);
     const newMessage = { ...formData, timestamp: new Date().toISOString() };
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('messages').insert([newMessage]);
-      if (!error) setShowSuccess(true);
+      if (!error) {
+        setShowSuccess(true);
+        setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
+      } else {
+        alert("Erreur d'envoi. Vérifiez votre connexion.");
+      }
     } else {
       const updated = [{ ...newMessage, id: Date.now().toString() }, ...messages];
       setMessages(updated);
@@ -256,7 +258,6 @@ const App: React.FC = () => {
       setShowSuccess(true);
     }
     setDbLoading(false);
-    setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
     setTimeout(() => setShowSuccess(false), 5000);
   };
 
@@ -310,7 +311,7 @@ const App: React.FC = () => {
              {isSupabaseConfigured && (
                <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 rounded-full border border-emerald-100">
                  <span className={`w-2 h-2 rounded-full ${isRealtimeActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
-                 <span className="text-[8px] font-black text-emerald-700 uppercase tracking-widest">RACHIDI LIVE SYNC</span>
+                 <span className="text-[8px] font-black text-emerald-700 uppercase tracking-widest">Live Cloud Sync</span>
                </div>
              )}
              <p className="text-lg font-black text-slate-900 mono">{new Date().toLocaleTimeString()}</p>
@@ -321,9 +322,11 @@ const App: React.FC = () => {
           {view === 'ADMIN' && (
             <div className="max-w-6xl mx-auto view-enter space-y-10 pb-24">
               <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                <div>
-                  <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">RACHIDI <span className="text-emerald-600">CLOUD</span></h2>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Mise à jour en temps réel • Hub Centralisé</p>
+                <div className="flex items-center gap-4">
+                  <div>
+                    <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">RACHIDI <span className="text-emerald-600">CLOUD</span></h2>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Mode Gérant • Sync Multi-device Activée</p>
+                  </div>
                 </div>
                 <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
                    <button onClick={() => setAdminSubTab('MESSAGES')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'MESSAGES' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Messages ({messages.length})</button>
@@ -333,6 +336,7 @@ const App: React.FC = () => {
 
               {adminSubTab === 'MESSAGES' ? (
                 <div className="grid grid-cols-1 gap-6">
+                  {messages.length === 0 && <div className="p-20 text-center bg-white rounded-[50px] border border-dashed border-slate-200 font-bold text-slate-300 uppercase tracking-widest">Aucun message pour le moment</div>}
                   {messages.map((msg) => (
                     <div key={msg.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col md:flex-row gap-8 items-start animate-in fade-in slide-in-from-top-4 duration-500">
                       <div className="flex-grow space-y-4">
@@ -342,13 +346,13 @@ const App: React.FC = () => {
                         </div>
                         <h4 className="text-2xl font-black text-slate-900">{msg.clientName}</h4>
                         <div className="flex flex-wrap gap-6 text-sm font-bold">
-                          <a href={`tel:${msg.phone}`} className="text-emerald-600 flex items-center gap-2">📞 {msg.phone}</a>
+                          <a href={`tel:${msg.phone}`} className="text-emerald-600 flex items-center gap-2 hover:underline">📞 {msg.phone}</a>
                           <span className="text-slate-500 flex items-center gap-2">✉️ {msg.email}</span>
                           <span className="text-slate-900 font-black px-3 py-1 bg-slate-100 rounded-lg">💰 {msg.budget} DH</span>
                         </div>
                         <div className="bg-slate-50 p-6 rounded-[25px] text-sm italic text-slate-600 border border-slate-100">"{msg.subject}"</div>
                       </div>
-                      <button onClick={() => deleteMessage(msg.id!)} className="p-4 bg-red-50 text-red-400 hover:bg-red-500 hover:text-white rounded-2xl transition-all shadow-sm shrink-0">
+                      <button onClick={() => deleteMessage(msg.id!)} className="p-4 bg-red-50 text-red-400 hover:bg-red-500 hover:text-white rounded-2xl transition-all shadow-sm shrink-0 group">
                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                       </button>
                     </div>
@@ -359,7 +363,7 @@ const App: React.FC = () => {
                   {visitorLogs.map((log) => (
                     <div key={log.id} className="bg-white p-8 rounded-[35px] border border-slate-100 shadow-sm space-y-5 hover:border-emerald-200 transition-all animate-in zoom-in-95">
                       <div className="flex justify-between items-start">
-                        <div className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest">Activité Live</div>
+                        <div className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest">En Direct</div>
                         <span className="text-[9px] font-black text-slate-300 uppercase">{new Date(log.timestamp).toLocaleTimeString('fr-FR')}</span>
                       </div>
                       <div>
@@ -367,7 +371,7 @@ const App: React.FC = () => {
                         <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mt-1">📍 {log.location}</p>
                       </div>
                       <div className="pt-4 border-t border-slate-50 space-y-3">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Navigation :</p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pages visitées :</p>
                         <div className="flex flex-wrap gap-2">
                           {log.pagesViewed.map((p, idx) => (
                             <span key={idx} className={`px-2 py-1 ${idx === log.pagesViewed.length - 1 ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-100 text-slate-600'} text-[8px] font-black rounded-lg uppercase`}>{p}</span>
@@ -445,8 +449,8 @@ const App: React.FC = () => {
                 {showSuccess ? (
                   <div className="bg-emerald-50 p-12 rounded-[40px] text-center space-y-4 animate-in zoom-in">
                     <div className="w-16 h-16 bg-emerald-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4"><svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>
-                    <h5 className="text-xl font-black text-emerald-900 uppercase tracking-tighter">Transmission Réussie</h5>
-                    <p className="text-xs font-bold text-emerald-600">Votre demande est visible instantanément par M. Rachidi.</p>
+                    <h5 className="text-xl font-black text-emerald-900 uppercase tracking-tighter">Message Envoyé</h5>
+                    <p className="text-xs font-bold text-emerald-600">Votre demande a été transmise instantanément au gérant.</p>
                   </div>
                 ) : (
                   <form onSubmit={handleContactSubmit} className="space-y-6">
@@ -496,11 +500,11 @@ const App: React.FC = () => {
               </div>
             </div>
           )}
-
+          
           {['SERVICES', 'PORTFOLIO', 'QUALITY'].includes(view) && (
             <div className="max-w-7xl mx-auto view-enter pb-24 text-center">
-               <h2 className="text-4xl font-black text-slate-900 mb-10 uppercase">{view}</h2>
-               <p className="text-slate-400 font-bold italic">Données synchronisées en temps réel depuis le cloud Rachidi.</p>
+               <h2 className="text-4xl font-black text-slate-900 mb-10 uppercase tracking-tighter">{view}</h2>
+               <p className="text-slate-400 font-bold italic">Les données s'actualisent sans rafraîchir la page.</p>
             </div>
           )}
         </div>
