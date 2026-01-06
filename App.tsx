@@ -80,15 +80,15 @@ const App: React.FC = () => {
   const currentVisitorId = useRef<string | null>(localStorage.getItem('rachidi_visit_id'));
   const pagesTracked = useRef<Set<string>>(new Set());
 
+  // Quick Init Logic
   useEffect(() => {
-    // Ultra-fast init
     const timer = setTimeout(() => setIsAppLoading(false), 500);
     initVisitorTracking();
     
     if (isSupabaseConfigured && supabase) {
       fetchData();
       
-      const channel = supabase.channel('rachidi-hq')
+      const channel = supabase.channel('rachidi-hq-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
           if (payload.eventType === 'INSERT') setMessages(prev => [payload.new as QuoteRequest, ...prev]);
           if (payload.eventType === 'DELETE') setMessages(prev => prev.filter(m => m.id !== payload.old.id));
@@ -118,7 +118,6 @@ const App: React.FC = () => {
 
   const initVisitorTracking = async () => {
     const savedVisitId = localStorage.getItem('rachidi_visit_id');
-    const now = Date.now();
     if (savedVisitId) {
        currentVisitorId.current = savedVisitId;
        return;
@@ -140,7 +139,7 @@ const App: React.FC = () => {
 
     if (isSupabaseConfigured && supabase) {
       const { data } = await supabase.from('visitor_logs').insert([newLog]).select();
-      if (data) {
+      if (data && data.length > 0) {
         currentVisitorId.current = data[0].id;
         localStorage.setItem('rachidi_visit_id', data[0].id);
       }
@@ -163,7 +162,7 @@ const App: React.FC = () => {
       if (msgRes.data) setMessages(msgRes.data);
       if (logRes.data) setVisitorLogs(logRes.data);
     } catch (err) {
-      console.error("DB Error:", err);
+      console.error("Fetch Error:", err);
     } finally {
       setDbLoading(false);
     }
@@ -210,6 +209,8 @@ const App: React.FC = () => {
       if (!error) {
         setShowSuccess(true);
         setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
+      } else {
+        console.error("DB Error:", error);
       }
     }
     setDbLoading(false);
@@ -269,7 +270,7 @@ const App: React.FC = () => {
           <div className="hidden md:flex items-center gap-6">
              <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100">
                <span className={`w-2 h-2 rounded-full ${isRealtimeActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
-               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Real-time Connected</span>
+               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Real-time Live</span>
              </div>
              <p className="text-sm font-black text-slate-900 mono">{new Date().toLocaleTimeString()}</p>
           </div>
@@ -281,7 +282,7 @@ const App: React.FC = () => {
               <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                 <div>
                   <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">CONTROL <span className="text-emerald-600">HUB</span></h2>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Flux de données Safi Live</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Safi Live Command Center</p>
                 </div>
                 <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
                    <button onClick={() => setAdminSubTab('MESSAGES')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'MESSAGES' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Messages ({messages.length})</button>
@@ -413,10 +414,10 @@ const App: React.FC = () => {
         </div>
         
         <footer className="h-16 flex items-center justify-between px-10 bg-white border-t border-slate-100 text-[8px] font-black uppercase tracking-[0.3em] text-slate-300 shrink-0">
-          <p>© 2025 STE RACHIDI • SAFI • OPTIMIZED BY SUPABASE REALTIME</p>
+          <p>© 2025 STE RACHIDI • SAFI • REALTIME HQ</p>
           <div className="flex gap-4">
-             <span>Speed: 0.12ms</span>
-             <span>Status: Stable</span>
+             <span>Status: Online</span>
+             <span>Region: Safi-MA</span>
           </div>
         </footer>
       </main>
