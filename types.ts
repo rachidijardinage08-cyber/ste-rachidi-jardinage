@@ -11,6 +11,15 @@ export interface QuoteRequest {
   budget: string;
 }
 
+export interface VisitorLog {
+  id?: string;
+  timestamp: string;
+  ip: string;
+  location: string;
+  pagesViewed: string[]; // Ex: ["HOME", "QUALITY"]
+  userAgent: string;
+}
+
 export interface ServiceItem {
   name: string;
   desc: string;

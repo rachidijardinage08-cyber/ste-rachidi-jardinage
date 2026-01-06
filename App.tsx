@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { AppView, ServiceCategory, Project, QuoteRequest } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import { AppView, ServiceCategory, Project, QuoteRequest, VisitorLog } from './types';
 import ProjectCard from './components/ProjectCard';
 import { GoogleGenAI } from "@google/genai";
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
@@ -20,7 +20,7 @@ const SERVICES: ServiceCategory[] = [
     items: [
       { name: "Maintenance Annuelle", desc: "Entretien régulier pour copropriétés et jardins privés." },
       { name: "Nettoyage Façades", desc: "Restauration professionnelle des façades par jet haute pression." },
-      { name: "Ponçage de Sols", desc: "Nettoyage et traitement des marbres et pierres naturelles." }
+      { name: "Ponçage de Sols", desc: "Ponçage et traitement des marbres et pierres naturelles." }
     ]
   },
   {
@@ -40,180 +40,174 @@ const PROJECTS: Project[] = [
     imageUrl: "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=80&w=1000&auto=format&fit=crop",
     tags: ["Industriel", "Maintenance"],
     description: "Plus de 3 ans de collaboration continue avec l'OCP pour le service de jardinage et nettoyage.",
-    fullDetails: [
-      "Marché de nettoyage et entretien des salles de réunion (Service de haute qualité).",
-      "Marché d'entretien complet des espaces verts industriels sur plus de 3 ans.",
-      "Gestion rigoureuse des normes HSE sur les sites OCP.",
-      "Maintenance préventive des installations paysagères."
-    ]
+    fullDetails: ["Nettoyage industriel", "Maintenance espaces verts", "HSE strict"]
   },
   {
-    title: "Villas de Prestige (A à Z)",
+    title: "Villas de Prestige",
     imageUrl: "https://images.unsplash.com/photo-1558905619-1714249d9727?q=80&w=1000&auto=format&fit=crop",
     tags: ["Résidentiel", "Création"],
     description: "Conception et création complète d'espaces verts pour villas de luxe à Safi.",
-    fullDetails: [
-      "Création intégrale à partir de zéro (terrassement, terre végétale, design).",
-      "Installation de systèmes d'arrosage automatique intelligents.",
-      "Plantation de spécimens rares et palmiers ornementaux.",
-      "Aménagement de zones de détente et bordures paysagères."
-    ]
-  },
-  {
-    title: "Impact Social & Associatif",
-    imageUrl: "https://images.unsplash.com/photo-1464226184884-fa280b87c399?q=80&w=1000&auto=format&fit=crop",
-    tags: ["Social", "National"],
-    description: "Engagement bénévole et professionnel auprès des associations nationales.",
-    fullDetails: [
-      "Aménagement et entretien de jardins pour maisons de retraite (Mossinin).",
-      "Création d'espaces de jeux et jardins pour centres d'enfants abandonnés.",
-      "Entretien des jardins pour centres de personnes handicapées.",
-      "Organisation de sessions de formation en jardinage (Bastana) pour les jeunes."
-    ]
+    fullDetails: ["Design 3D", "Arrosage automatique", "Plantations rares"]
   }
 ];
 
 const LOGO_URL = "https://i.ibb.co/LdF8wDg0/Empreinte-verte-et-nature.png";
 const MY_PHONE = "212664381028";
 const MY_PHONE_DISPLAY = "06 64 38 10 28";
-const MY_EMAIL = "rachidijardinage08@gmail.com";
 const MY_ADDRESS = "17 RUE E HAY OUMNIA EL BOUAB, SAFI, MAROC";
 const WHATSAPP_URL = `https://wa.me/${MY_PHONE}`;
+const ADMIN_USER = "admin";
 const ADMIN_PASSWORD = "Rjns2025@@";
-
-interface WeatherStatus {
-  temp: number;
-  condition: string;
-  suitability: 'GOOD' | 'OK' | 'BAD';
-  advice: string;
-}
 
 const App: React.FC = () => {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [view, setView] = useState<AppView>('HOME');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [adminUserInput, setAdminUserInput] = useState('');
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
   const [messages, setMessages] = useState<QuoteRequest[]>([]);
+  const [visitorLogs, setVisitorLogs] = useState<VisitorLog[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [weather, setWeather] = useState<WeatherStatus | null>(null);
   const [dbLoading, setDbLoading] = useState(false);
+  const [adminSubTab, setAdminSubTab] = useState<'MESSAGES' | 'VISITS'>('MESSAGES');
   
   const [formData, setFormData] = useState<QuoteRequest>({
-    clientName: '',
-    phone: '',
-    email: '',
-    serviceType: 'Jardinage',
-    subject: '',
-    budget: ''
+    clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: ''
   });
   
-  const [errors, setErrors] = useState<{phone?: string; clientName?: string; email?: string; subject?: string}>({});
-  const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
+  const currentVisitorId = useRef<string | null>(localStorage.getItem('rachidi_visit_id'));
+  const pagesTracked = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const loadTimer = setTimeout(() => setIsAppLoading(false), 1800);
-    const timer = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000);
-    fetchWeatherAndAnalyze();
-
-    // Initial load of messages
+    initVisitorTracking();
     if (isSupabaseConfigured) {
-      fetchMessagesFromSupabase();
+      fetchData();
     } else {
-      loadMessagesFromLocalStorage();
+      loadFromLocal();
     }
-
-    return () => {
-      clearInterval(timer);
-      clearTimeout(loadTimer);
-    };
+    return () => clearTimeout(loadTimer);
   }, []);
 
+  // Track page views
   useEffect(() => {
-    if (view === 'ADMIN') {
-      if (isSupabaseConfigured) fetchMessagesFromSupabase();
-      else loadMessagesFromLocalStorage();
+    if (view === 'ADMIN' || view === 'LOGIN') return;
+    if (!pagesTracked.current.has(view)) {
+      pagesTracked.current.add(view);
+      updateVisitorPages();
     }
   }, [view]);
 
-  const loadMessagesFromLocalStorage = () => {
+  const initVisitorTracking = async () => {
+    const lastVisit = localStorage.getItem('rachidi_visit_time');
+    const savedVisitId = localStorage.getItem('rachidi_visit_id');
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
+    // Si on a déjà une session valide de moins de 24h
+    if (lastVisit && savedVisitId && (now - parseInt(lastVisit) < TWENTY_FOUR_HOURS)) {
+      currentVisitorId.current = savedVisitId;
+      // Recharger les pages déjà vues depuis le stockage pour ne pas les perdre au refresh
+      const logs = JSON.parse(localStorage.getItem('rachidi_visitor_logs') || '[]');
+      const currentLog = logs.find((l: any) => l.id === savedVisitId);
+      if (currentLog) {
+        currentLog.pagesViewed.forEach((p: string) => pagesTracked.current.add(p));
+      }
+      return;
+    }
+
+    // Nouvelle session ou session expirée (>24h)
+    let ipData = { ip: 'Client Local', city: 'Safi', country_name: 'Maroc' };
     try {
-      const saved = localStorage.getItem('rachidi_messages');
-      if (saved) setMessages(JSON.parse(saved));
-    } catch (e) { console.error("Local storage error", e); }
+      const ipRes = await fetch('https://ipapi.co/json/');
+      if (ipRes.ok) {
+        const data = await ipRes.json();
+        ipData = { ip: data.ip, city: data.city, country_name: data.country_name };
+      }
+    } catch (e) { 
+      console.warn("API IP inaccessible, utilisation du fallback local");
+    }
+    
+    const newLog: VisitorLog = {
+      timestamp: new Date().toISOString(),
+      ip: ipData.ip || 'Inconnue',
+      location: `${ipData.city || 'Maroc'}, ${ipData.country_name || ''}`,
+      pagesViewed: [view],
+      userAgent: navigator.userAgent
+    };
+
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.from('visitor_logs').insert([newLog]).select();
+      if (!error && data) {
+        currentVisitorId.current = data[0].id;
+        localStorage.setItem('rachidi_visit_id', data[0].id);
+      }
+    } else {
+      const id = "v_" + Date.now().toString();
+      currentVisitorId.current = id;
+      localStorage.setItem('rachidi_visit_id', id);
+      saveVisitorToLocal(newLog, id);
+    }
+    localStorage.setItem('rachidi_visit_time', now.toString());
   };
 
-  const fetchMessagesFromSupabase = async () => {
-    if (!isSupabaseConfigured || !supabase) return;
-    setDbLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .order('timestamp', { ascending: false });
-
-      if (error) throw error;
-      setMessages(data || []);
-    } catch (err) {
-      console.error("Supabase Fetch Error:", err);
-      loadMessagesFromLocalStorage(); // Fallback if query fails
-    } finally {
-      setDbLoading(false);
+  const updateVisitorPages = async () => {
+    if (!currentVisitorId.current) return;
+    const pages = Array.from(pagesTracked.current);
+    
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('visitor_logs').update({ pagesViewed: pages }).eq('id', currentVisitorId.current);
+    } else {
+      const logs = JSON.parse(localStorage.getItem('rachidi_visitor_logs') || '[]');
+      const updated = logs.map((l: any) => l.id === currentVisitorId.current ? { ...l, pagesViewed: pages } : l);
+      localStorage.setItem('rachidi_visitor_logs', JSON.stringify(updated));
     }
   };
 
-  const fetchWeatherAndAnalyze = () => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(async (position) => {
-      const { latitude, longitude } = position.coords;
-      try {
-        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`);
-        const data = await res.json();
-        const cw = data.current_weather;
-        
-        const apiKey = process.env.API_KEY;
-        if (!apiKey) {
-          setWeather({ temp: cw.temperature, condition: "Météo locale", suitability: 'GOOD', advice: "Ciel clair" });
-          return;
-        }
+  const saveVisitorToLocal = (log: VisitorLog, id: string) => {
+    const logs = JSON.parse(localStorage.getItem('rachidi_visitor_logs') || '[]');
+    localStorage.setItem('rachidi_visitor_logs', JSON.stringify([{ ...log, id }, ...logs].slice(0, 50)));
+  };
 
-        const ai = new GoogleGenAI({ apiKey });
-        const prompt = `En tant qu'expert en jardinage chez STE RACHIDI, analyse cette météo : ${cw.temperature}°C. Dis si c'est propice au jardinage. JSON: {"advice": "Ensoleillé", "suitability": "GOOD"}`;
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        });
-        
-        let text = response.text || "{}";
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const analysis = JSON.parse(text);
-        setWeather({ temp: cw.temperature, condition: analysis.advice || "Variable", suitability: analysis.suitability || "GOOD", advice: analysis.advice || "Ok" });
-      } catch (err) { console.error("Weather error", err); }
-    });
+  const fetchData = async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    setDbLoading(true);
+    try {
+      const [msgRes, logRes] = await Promise.all([
+        supabase.from('messages').select('*').order('timestamp', { ascending: false }),
+        supabase.from('visitor_logs').select('*').order('timestamp', { ascending: false }).limit(50)
+      ]);
+      if (msgRes.data) setMessages(msgRes.data);
+      if (logRes.data) setVisitorLogs(logRes.data);
+    } catch (err) { console.error(err); loadFromLocal(); }
+    finally { setDbLoading(false); }
+  };
+
+  const loadFromLocal = () => {
+    setMessages(JSON.parse(localStorage.getItem('rachidi_messages') || '[]'));
+    setVisitorLogs(JSON.parse(localStorage.getItem('rachidi_visitor_logs') || '[]'));
   };
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPasswordInput === ADMIN_PASSWORD) {
+    if (adminUserInput === ADMIN_USER && adminPasswordInput === ADMIN_PASSWORD) {
       setView('ADMIN');
+      setAdminUserInput('');
       setAdminPasswordInput('');
       setLoginError('');
+      if (isSupabaseConfigured) fetchData();
+      else loadFromLocal();
     } else {
-      setLoginError('Mot de passe incorrect.');
+      setLoginError('Identifiants incorrects.');
     }
   };
 
   const deleteMessage = async (id: string) => {
     if (isSupabaseConfigured && supabase) {
-      try {
-        const { error } = await supabase.from('messages').delete().eq('id', id);
-        if (error) throw error;
-        setMessages(messages.filter(m => m.id !== id));
-      } catch (err) {
-        alert("Erreur lors de la suppression sur le cloud");
-      }
+      await supabase.from('messages').delete().eq('id', id);
+      fetchData();
     } else {
       const updated = messages.filter(m => m.id !== id);
       setMessages(updated);
@@ -221,302 +215,275 @@ const App: React.FC = () => {
     }
   };
 
-  const validatePhone = (phone: string) => /^(05|06|07)\d{8}$/.test(phone);
-
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = e.target.value.replace(/\D/g, ''); 
-    if (val.length > 10) val = val.slice(0, 10);
+    let val = e.target.value.replace(/\D/g, '').slice(0, 10);
     setFormData({ ...formData, phone: val });
   };
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors: any = {};
-    if (!formData.clientName.trim()) newErrors.clientName = "Nom obligatoire.";
-    if (!formData.email.trim()) newErrors.email = "Email obligatoire.";
-    if (!formData.subject.trim()) newErrors.subject = "Message obligatoire.";
-    if (!validatePhone(formData.phone)) newErrors.phone = "Format invalide.";
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
     setDbLoading(true);
+    const newMessage = { ...formData, timestamp: new Date().toISOString() };
     if (isSupabaseConfigured && supabase) {
-      try {
-        const { error } = await supabase.from('messages').insert([{
-          clientName: formData.clientName,
-          phone: formData.phone,
-          email: formData.email,
-          serviceType: formData.serviceType,
-          subject: formData.subject,
-          budget: formData.budget
-        }]);
-        if (error) throw error;
-        setShowSuccess(true);
-      } catch (err) {
-        console.error("Supabase Send Error", err);
-        alert("Erreur de connexion au cloud. Envoi local de secours.");
-        saveToLocal();
-      } finally {
-        setDbLoading(false);
-      }
+      const { error } = await supabase.from('messages').insert([newMessage]);
+      if (!error) setShowSuccess(true);
     } else {
-      saveToLocal();
-      setDbLoading(false);
-    }
-    
-    function saveToLocal() {
-      const newMessage = { ...formData, id: Date.now().toString(), timestamp: new Date().toISOString() };
-      const updated = [newMessage, ...messages];
+      const updated = [{ ...newMessage, id: Date.now().toString() }, ...messages];
       setMessages(updated);
       localStorage.setItem('rachidi_messages', JSON.stringify(updated));
       setShowSuccess(true);
     }
-
-    if (showSuccess || true) {
-      setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
-      setTimeout(() => setShowSuccess(false), 5000);
-    }
+    setDbLoading(false);
+    setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
+    setTimeout(() => setShowSuccess(false), 5000);
   };
 
   const navItems = [
     { id: 'HOME', label: 'Accueil', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
-    { id: 'SERVICES', label: 'Services', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
-    { id: 'PORTFOLIO', label: 'Projets', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
-    { id: 'QUALITY', label: 'Qualité', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
-    { id: 'CONTACT', label: 'Contact', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' }
+    { id: 'SERVICES', label: 'Services', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6z' },
+    { id: 'PORTFOLIO', label: 'Projets', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14' },
+    { id: 'QUALITY', label: 'Qualité', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944' },
+    { id: 'CONTACT', label: 'Contact', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8' }
   ];
 
   if (isAppLoading) {
     return (
       <div className="fixed inset-0 bg-[#064e3b] z-[200] flex flex-col items-center justify-center">
-        <div className="relative">
-          <img src={LOGO_URL} className="w-48 md:w-64 object-contain animate-pulse duration-1000" alt="Chargement..." />
-          <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 w-48 h-1 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-400 animate-[loading_1.8s_ease-in-out_forwards]"></div>
-          </div>
+        <img src={LOGO_URL} className="w-48 md:w-64 animate-pulse" alt="Logo" />
+        <div className="mt-12 w-48 h-1 bg-white/10 rounded-full overflow-hidden">
+          <div className="h-full bg-emerald-400 animate-[loading_1.8s_ease-in-out_forwards]"></div>
         </div>
-        <p className="mt-16 text-emerald-100/50 text-[10px] font-black uppercase tracking-[0.5em] animate-pulse">STE RACHIDI JARDINAGE</p>
         <style>{`@keyframes loading { 0% { width: 0%; } 100% { width: 100%; } }`}</style>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen w-screen bg-slate-100 text-slate-800 overflow-hidden font-sans animate-in fade-in duration-700">
-      {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
-
-      <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static w-72 md:w-80 bg-[#064e3b] flex flex-col shadow-2xl z-50 transition-transform duration-300 ease-in-out`}>
+    <div className="flex h-screen w-screen bg-slate-100 text-slate-800 overflow-hidden font-sans">
+      <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static w-72 md:w-80 bg-[#064e3b] flex flex-col shadow-2xl z-50 transition-transform duration-300`}>
         <div className="p-6 flex flex-col items-center border-b border-emerald-800/30">
-          <img src={LOGO_URL} className="w-40 md:w-48 object-contain" alt="Logo" />
-          <h1 className="text-white text-[10px] font-black uppercase tracking-widest text-center mt-2 opacity-80">STE RACHIDI JARDINAGE</h1>
+          <img src={LOGO_URL} className="w-40" alt="Logo" />
         </div>
         <nav className="flex-grow p-6 space-y-2 overflow-y-auto custom-scroll">
           {navItems.map((item) => (
             <button key={item.id} onClick={() => {setView(item.id as AppView); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-4 p-4 rounded-xl font-bold transition-all ${view === item.id ? 'nav-active' : 'text-emerald-100/60 hover:text-white hover:bg-emerald-800/20'}`}>
-              <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
               <span className="text-[11px] uppercase tracking-widest">{item.label}</span>
             </button>
           ))}
         </nav>
         <div className="p-6 border-t border-emerald-800/30">
-          <button onClick={() => {setView('LOGIN'); setIsSidebarOpen(false);}} className={`w-full p-4 rounded-2xl flex items-center justify-center gap-3 transition-all ${view === 'LOGIN' || view === 'ADMIN' ? 'bg-white text-emerald-900 shadow-xl' : 'bg-emerald-900/50 text-white border border-emerald-700/50 hover:bg-emerald-800'}`}>
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-            <span className="text-[10px] font-black uppercase tracking-widest">Espace Gérant</span>
+          <button onClick={() => setView('LOGIN')} className={`w-full p-4 rounded-2xl flex items-center justify-center gap-3 ${view === 'LOGIN' || view === 'ADMIN' ? 'bg-white text-emerald-900 shadow-xl' : 'bg-emerald-900/50 text-white'}`}>
+             <span className="text-[10px] font-black uppercase tracking-widest">Espace Gérant</span>
           </button>
         </div>
       </aside>
 
       <main className="flex-grow flex flex-col relative overflow-hidden bg-white lg:rounded-l-[40px]">
         <header className="h-20 flex items-center justify-between px-6 md:px-12 bg-white border-b border-slate-100 shrink-0 z-30">
-          <div className="flex items-center gap-4">
-             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-emerald-600 bg-emerald-50 rounded-lg"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16"/></svg></button>
-             <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">{view === 'ADMIN' ? 'Dashboard' : view === 'LOGIN' ? 'Connexion' : view}</h3>
-          </div>
-          <div className="flex items-center gap-6">
-            {dbLoading && <div className="text-[8px] font-black text-emerald-600 uppercase tracking-widest animate-pulse">{isSupabaseConfigured ? 'Sync Cloud...' : 'Sauvegarde...'}</div>}
-            {weather && <div className="hidden sm:flex items-center gap-3 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100"><div className={`w-2 h-2 rounded-full ${weather.suitability === 'GOOD' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-400'}`}></div><p className="text-[10px] font-black text-slate-700 uppercase">{weather.advice} • {weather.temp}°C</p></div>}
-            <div className="hidden md:block text-right"><p className="text-lg font-black text-slate-900 tracking-tighter mono leading-none">{currentTime}</p></div>
-          </div>
+          <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-emerald-600 bg-emerald-50 rounded-lg"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+          <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">{view}</h3>
+          <div className="hidden md:block text-right"><p className="text-lg font-black text-slate-900 mono">{new Date().toLocaleTimeString()}</p></div>
         </header>
 
         <div className="flex-grow overflow-y-auto custom-scroll bg-slate-50/50 p-6 md:p-12">
           {view === 'ADMIN' && (
             <div className="max-w-6xl mx-auto view-enter space-y-10 pb-24">
-              <div className="flex flex-col md:flex-row justify-between items-end gap-6">
+              <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                 <div>
-                  <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase">Leads <span className="text-emerald-600">{isSupabaseConfigured ? 'Cloud' : 'Local'}</span></h2>
-                  <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-2">
-                    {isSupabaseConfigured ? 'Synchronisation Temps Réel Activée' : 'Mode Local (Supabase non configuré)'} • Total: {messages.length}
-                  </p>
+                  <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">RACHIDI <span className="text-emerald-600">ANALYTICS</span></h2>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Console de gestion v2.1 • Session 24h Active</p>
                 </div>
-                <div className="flex gap-4">
-                  <button onClick={isSupabaseConfigured ? fetchMessagesFromSupabase : loadMessagesFromLocalStorage} className="px-6 py-4 bg-emerald-50 text-emerald-600 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 hover:bg-emerald-100 transition-all">Actualiser</button>
-                  <button onClick={() => setView('HOME')} className="px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest">Quitter</button>
+                <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
+                   <button onClick={() => setAdminSubTab('MESSAGES')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'MESSAGES' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Messages ({messages.length})</button>
+                   <button onClick={() => setAdminSubTab('VISITS')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'VISITS' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Visiteurs ({visitorLogs.length})</button>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-6">
-                {dbLoading && messages.length === 0 ? (
-                  <div className="bg-white p-20 rounded-[40px] text-center"><p className="text-emerald-600 font-black animate-pulse">Chargement des données...</p></div>
-                ) : messages.length === 0 ? (
-                  <div className="bg-white p-20 rounded-[40px] border-2 border-dashed border-slate-200 text-center"><p className="text-slate-400 font-bold">Aucun message trouvé.</p></div>
-                ) : (
-                  messages.map((msg, idx) => (
-                    <div key={msg.id || idx} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col md:flex-row gap-8 items-start">
-                      <div className="flex-grow space-y-4 w-full">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-black rounded-lg border border-emerald-100 uppercase">{msg.serviceType}</span>
-                          <span className="text-[9px] text-slate-300 font-bold uppercase">{msg.timestamp ? new Date(msg.timestamp).toLocaleString() : 'Inconnu'}</span>
+
+              {adminSubTab === 'MESSAGES' ? (
+                <div className="grid grid-cols-1 gap-6">
+                  {messages.length === 0 ? <div className="bg-white p-20 rounded-[40px] text-center border-2 border-dashed border-slate-100"><p className="text-slate-400 font-black uppercase tracking-widest">Aucune demande reçue</p></div> : 
+                    messages.map((msg) => (
+                      <div key={msg.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col md:flex-row gap-8 items-start">
+                        <div className="flex-grow space-y-4">
+                          <div className="flex items-center gap-3">
+                            <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-black rounded-lg uppercase border border-emerald-100">{msg.serviceType}</span>
+                            <span className="text-[9px] text-slate-300 font-bold uppercase">{new Date(msg.timestamp!).toLocaleString('fr-FR')}</span>
+                          </div>
+                          <h4 className="text-2xl font-black text-slate-900">{msg.clientName}</h4>
+                          <div className="flex flex-wrap gap-6 text-sm font-bold">
+                            <a href={`tel:${msg.phone}`} className="text-emerald-600 flex items-center gap-2">📞 {msg.phone}</a>
+                            <span className="text-slate-500 flex items-center gap-2">✉️ {msg.email}</span>
+                          </div>
+                          <div className="bg-slate-50 p-6 rounded-[25px] text-sm italic text-slate-600 leading-relaxed border border-slate-100">"{msg.subject}"</div>
                         </div>
-                        <h4 className="text-2xl font-black text-slate-900 leading-none">{msg.clientName}</h4>
-                        <div className="flex flex-wrap gap-6 text-sm">
-                           <a href={`tel:+${msg.phone}`} className="font-black text-emerald-600">📞 {msg.phone}</a>
-                           <span className="text-slate-500">✉️ {msg.email}</span>
-                           {msg.budget && <span className="font-black">💰 {msg.budget} DH</span>}
-                        </div>
-                        <p className="bg-slate-50 p-6 rounded-3xl text-sm font-medium text-slate-600 border border-slate-100 italic leading-relaxed">"{msg.subject}"</p>
+                        <button onClick={() => deleteMessage(msg.id!)} className="p-4 bg-red-50 text-red-400 hover:bg-red-500 hover:text-white rounded-2xl transition-all shadow-sm shrink-0">
+                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
                       </div>
-                      <button onClick={() => deleteMessage(msg.id!)} className="p-4 bg-red-50 text-red-400 hover:bg-red-500 hover:text-white rounded-2xl transition-all shadow-sm shrink-0"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
-                    </div>
-                  ))
-                )}
-              </div>
+                    ))
+                  }
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {visitorLogs.length === 0 ? <div className="col-span-full bg-white p-20 rounded-[40px] text-center border-2 border-dashed border-slate-100"><p className="text-slate-400 font-black uppercase tracking-widest">Aucune donnée de visite</p></div> :
+                    visitorLogs.map((log) => (
+                      <div key={log.id} className="bg-white p-8 rounded-[35px] border border-slate-100 shadow-sm space-y-5 hover:border-emerald-200 transition-colors">
+                        <div className="flex justify-between items-start">
+                          <div className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest">Visite</div>
+                          <span className="text-[9px] font-black text-slate-300 uppercase">{new Date(log.timestamp).toLocaleTimeString('fr-FR')}</span>
+                        </div>
+                        <div>
+                          <h5 className="text-xl font-black text-slate-900 tracking-tighter leading-none">{log.ip}</h5>
+                          <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mt-1">📍 {log.location}</p>
+                        </div>
+                        <div className="pt-4 border-t border-slate-50 space-y-3">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Parcours client :</p>
+                          <div className="flex flex-wrap gap-2">
+                            {log.pagesViewed.map((p, idx) => (
+                              <div key={idx} className="flex items-center gap-1">
+                                <span className={`px-2 py-1 ${idx === log.pagesViewed.length - 1 ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'} text-[8px] font-black rounded-lg uppercase`}>{p}</span>
+                                {idx < log.pagesViewed.length - 1 && <span className="text-slate-200 text-[8px]">→</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-[8px] text-slate-300 italic truncate font-medium">{log.userAgent}</div>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
             </div>
           )}
 
           {view === 'LOGIN' && (
             <div className="min-h-[60vh] flex items-center justify-center view-enter">
-              <div className="bg-white p-10 md:p-16 rounded-[40px] shadow-2xl border border-slate-100 w-full max-w-md text-center">
-                <h2 className="text-3xl font-black text-slate-900 tracking-tighter mb-8 uppercase">Accès Gérant</h2>
-                <form onSubmit={handleAdminLogin} className="space-y-6">
-                  <input type="password" placeholder="MOT DE PASSE" required className="w-full bg-slate-50 border border-slate-200 p-5 rounded-2xl text-center font-black tracking-widest outline-none focus:border-emerald-500" value={adminPasswordInput} onChange={(e) => setAdminPasswordInput(e.target.value)} />
-                  {loginError && <p className="text-xs text-red-500 font-bold">{loginError}</p>}
-                  <button type="submit" className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-xs tracking-widest shadow-lg uppercase">Se Connecter</button>
+              <div className="bg-white p-12 rounded-[50px] shadow-2xl border border-slate-100 w-full max-w-md text-center">
+                <div className="w-20 h-20 bg-emerald-50 rounded-[25px] flex items-center justify-center mx-auto mb-8">
+                  <svg className="w-10 h-10 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                </div>
+                <h2 className="text-3xl font-black text-slate-900 mb-8 uppercase tracking-tighter">Accès Gérant</h2>
+                <form onSubmit={handleAdminLogin} className="space-y-4">
+                  <div className="text-left">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4 mb-1 block">Identifiant</label>
+                    <input type="text" placeholder="LOGIN" required className="w-full bg-slate-50 border border-slate-200 p-5 rounded-2xl font-black tracking-widest focus:border-emerald-500 uppercase outline-none transition-all" value={adminUserInput} onChange={(e) => setAdminUserInput(e.target.value)} />
+                  </div>
+                  <div className="text-left">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4 mb-1 block">Mot de passe</label>
+                    <input type="password" placeholder="MOT DE PASSE" required className="w-full bg-slate-50 border border-slate-200 p-5 rounded-2xl font-black tracking-widest focus:border-emerald-500 outline-none transition-all" value={adminPasswordInput} onChange={(e) => setAdminPasswordInput(e.target.value)} />
+                  </div>
+                  {loginError && <p className="text-xs text-red-500 font-bold animate-shake">{loginError}</p>}
+                  <button type="submit" className="w-full mt-4 py-5 bg-emerald-600 text-white rounded-2xl font-black text-xs tracking-widest shadow-lg uppercase hover:bg-emerald-700 transition-all active:scale-95">Se Connecter</button>
                 </form>
               </div>
             </div>
           )}
 
           {view === 'HOME' && (
-            <div className="max-w-7xl mx-auto view-enter space-y-24 md:space-y-32 pb-24 pt-6">
-              <section className="flex flex-col lg:flex-row gap-12 lg:gap-20 items-center px-2">
-                <div className="space-y-8 text-center lg:text-left order-2 lg:order-1">
-                  <div className="inline-flex items-center gap-3 px-5 py-2.5 bg-white border border-slate-100 rounded-full shadow-sm"><span className="flex h-2.5 w-2.5 rounded-full bg-emerald-600 animate-pulse"></span><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Safi • Expert Paysagiste</span></div>
-                  <h1 className="text-5xl md:text-7xl font-black text-slate-900 leading-[0.95] tracking-tighter">Votre jardin,<br/> notre <span className="text-emerald-600">priorité.</span></h1>
-                  <p className="text-base md:text-xl text-slate-500 font-medium leading-relaxed max-w-xl italic mx-auto lg:mx-0">L'aménagement paysager professionnel pour villas, résidences et industries à Safi et partout au Maroc.</p>
-                  <div className="flex flex-wrap gap-4 justify-center lg:justify-start">
-                    <button onClick={() => setView('CONTACT')} className="px-10 py-5 bg-emerald-600 text-white rounded-3xl font-black text-xs tracking-widest shadow-xl hover:bg-emerald-700 transition-all uppercase">Démarrer un projet</button>
-                    <button onClick={() => setView('SERVICES')} className="px-10 py-5 bg-white text-slate-800 border-2 border-slate-100 rounded-3xl font-black text-xs tracking-widest hover:border-emerald-500 transition-all uppercase">Nos services</button>
-                  </div>
+            <div className="max-w-7xl mx-auto view-enter space-y-24 py-12">
+              <div className="flex flex-col lg:flex-row gap-12 items-center">
+                <div className="space-y-8 lg:w-1/2">
+                   <div className="inline-flex items-center gap-3 px-5 py-2.5 bg-white border border-slate-100 rounded-full shadow-sm"><span className="w-2.5 h-2.5 bg-emerald-600 rounded-full animate-pulse"></span><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Safi • Expert Paysagiste</span></div>
+                   <h1 className="text-5xl md:text-8xl font-black text-slate-900 leading-[0.85] tracking-tighter">Votre jardin, notre <span className="text-emerald-600">priorité.</span></h1>
+                   <p className="text-lg text-slate-500 font-medium italic">L'excellence paysagère pour villas, résidences et industries à Safi et partout au Maroc.</p>
+                   <div className="flex gap-4">
+                      <button onClick={() => setView('CONTACT')} className="px-10 py-5 bg-emerald-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all">Démarrer un projet</button>
+                      <button onClick={() => setView('SERVICES')} className="px-10 py-5 bg-white border-2 border-slate-100 text-slate-800 rounded-3xl font-black text-xs uppercase tracking-widest hover:border-emerald-500 transition-all">Nos services</button>
+                   </div>
                 </div>
-                <div className="relative w-full max-w-md lg:max-w-none order-1 lg:order-2">
+                <div className="lg:w-1/2 relative">
                    <div className="absolute inset-0 bg-emerald-100/30 blur-[100px] rounded-full -z-10"></div>
-                   <div className="rounded-[50px] overflow-hidden shadow-2xl border-[12px] border-white aspect-[4/5]"><img src="https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=1200&q=80" className="w-full h-full object-cover" alt="Hero" /></div>
+                   <img src="https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=1200&q=80" className="rounded-[60px] shadow-2xl border-[12px] border-white aspect-[4/5] object-cover" alt="Hero" />
                 </div>
-              </section>
+              </div>
+            </div>
+          )}
+
+          {view === 'QUALITY' && (
+            <div className="max-w-6xl mx-auto view-enter space-y-16 pb-32">
+              <div className="text-center space-y-4">
+                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.5em]">Standard Excellence</span>
+                <h2 className="text-5xl md:text-8xl font-black text-slate-900 tracking-tighter uppercase leading-[0.85]">Engagement <span className="text-emerald-600 underline decoration-8 decoration-emerald-100">Total.</span></h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                 <div className="bg-white p-12 rounded-[50px] border border-slate-100 shadow-sm space-y-6">
+                    <div className="text-5xl">🌿</div>
+                    <h3 className="text-3xl font-black uppercase tracking-tighter">Perfection Végétale</h3>
+                    <p className="text-slate-500 italic font-medium leading-relaxed">Chaque plante est sélectionnée dans notre pépinière partenaire. Utilisation exclusive d'engrais bio et traitements non-toxiques.</p>
+                 </div>
+                 <div className="bg-slate-900 p-12 rounded-[50px] shadow-2xl text-white space-y-6">
+                    <div className="text-5xl">🛡️</div>
+                    <h3 className="text-3xl font-black uppercase tracking-tighter text-emerald-400">Rigueur HSE</h3>
+                    <p className="text-slate-400 italic font-medium leading-relaxed">Protocoles certifiés conformes aux exigences industrielles de l'OCP Group. Équipements de protection complets pour nos agents.</p>
+                 </div>
+              </div>
             </div>
           )}
 
           {view === 'SERVICES' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10 view-enter max-w-7xl mx-auto pb-24 px-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 view-enter max-w-7xl mx-auto pb-24">
               {SERVICES.map((cat, i) => (
-                <div key={i} className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-sm flex flex-col group hover:-translate-y-2 transition-transform">
+                <div key={i} className="bg-white p-12 rounded-[50px] border border-slate-100 shadow-sm flex flex-col group hover:-translate-y-2 transition-transform">
                   <div className="text-6xl mb-10">{cat.icon}</div>
                   <h4 className="text-3xl font-black text-slate-900 mb-10 tracking-tighter leading-none">{cat.title}</h4>
                   <div className="space-y-6 flex-grow">
                     {cat.items.map((item, ii) => (
-                      <div key={ii} className="border-l-4 border-slate-50 pl-6 py-1"><p className="font-black text-sm text-slate-800 uppercase leading-tight">{item.name}</p><p className="text-xs text-slate-400 font-medium italic mt-1 leading-relaxed">{item.desc}</p></div>
+                      <div key={ii} className="border-l-4 border-emerald-500 pl-6 py-1"><p className="font-black text-sm text-slate-800 uppercase leading-tight">{item.name}</p><p className="text-xs text-slate-400 font-medium italic mt-1 leading-relaxed">{item.desc}</p></div>
                     ))}
                   </div>
-                  <button onClick={() => setView('CONTACT')} className="mt-12 py-5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg uppercase">Devis Gratuit</button>
+                  <button onClick={() => setView('CONTACT')} className="mt-12 py-5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg">Demander un Devis</button>
                 </div>
               ))}
             </div>
           )}
 
           {view === 'PORTFOLIO' && (
-            <div className="max-w-7xl mx-auto view-enter pb-24 px-2">
-              <div className="text-center mb-16 px-4">
-                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.4em] block mb-4">Galerie Projets</span>
+            <div className="max-w-7xl mx-auto view-enter pb-24">
+              <div className="text-center mb-16">
+                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.4em]">Galerie Projets</span>
                 <h2 className="text-4xl md:text-6xl font-black text-slate-900 tracking-tighter uppercase">Nos <span className="text-emerald-600">Réalisations</span></h2>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
-                {PROJECTS.map((project, i) => (
-                  <div key={i} onClick={() => setSelectedProject(project)} className="w-full"><ProjectCard project={project} /></div>
-                ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                {PROJECTS.map((project, i) => <ProjectCard key={i} project={project} />)}
               </div>
             </div>
           )}
 
           {view === 'CONTACT' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 md:gap-16 view-enter max-w-7xl mx-auto pb-24 px-2">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 view-enter max-w-7xl mx-auto pb-24">
               <div className="lg:col-span-5 space-y-8">
-                <div className="bg-slate-900 p-10 md:p-14 rounded-[40px] md:rounded-[50px] shadow-2xl text-white border-b-[12px] border-emerald-600">
-                  <h4 className="text-[14px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-12">STE RACHIDI JARDINAGE</h4>
+                <div className="bg-slate-900 p-14 rounded-[50px] shadow-2xl text-white border-b-[12px] border-emerald-600">
+                  <h4 className="text-[14px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-12">Contact Direct</h4>
                   <div className="space-y-12">
-                    <div>
-                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-2 opacity-60">Localisation</p>
-                      <p className="text-base md:text-lg font-black leading-snug tracking-tighter uppercase">{MY_ADDRESS}</p>
-                    </div>
+                    <div><p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-2 opacity-60">Adresse</p><p className="text-lg font-black tracking-tighter uppercase">{MY_ADDRESS}</p></div>
                     <div className="space-y-8">
-                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest opacity-60">Num de tel</p>
                       <a href={`tel:+${MY_PHONE}`} className="flex items-center gap-6 group">
-                        <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-emerald-950/40 group-hover:bg-emerald-500 transition-colors"><svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg></div>
-                        <span className="text-2xl md:text-3xl font-black tracking-tighter font-mono">{MY_PHONE_DISPLAY}</span>
+                        <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center shrink-0 shadow-lg group-hover:bg-emerald-500 transition-colors"><svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg></div>
+                        <span className="text-3xl font-black tracking-tighter font-mono">{MY_PHONE_DISPLAY}</span>
                       </a>
-                      <div>
-                        <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-2 opacity-60">Email</p>
-                        <p className="text-sm md:text-base text-slate-300 font-bold uppercase tracking-widest break-all leading-tight">{MY_EMAIL}</p>
-                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="lg:col-span-7 bg-white rounded-[40px] md:rounded-[60px] p-8 md:p-16 shadow-2xl border border-slate-100">
-                <h4 className="text-3xl md:text-4xl font-black text-slate-900 mb-10 tracking-tighter uppercase leading-none">Demande de <span className="text-emerald-600">Devis.</span></h4>
+              <div className="lg:col-span-7 bg-white rounded-[60px] p-16 shadow-2xl border border-slate-100">
+                <h4 className="text-4xl font-black text-slate-900 mb-10 tracking-tighter uppercase leading-none">Demande de <span className="text-emerald-600">Devis.</span></h4>
                 {showSuccess ? (
-                  <div className="bg-emerald-50 p-10 rounded-[30px] text-center space-y-4 shadow-inner">
+                  <div className="bg-emerald-50 p-12 rounded-[40px] text-center space-y-4">
                     <div className="w-16 h-16 bg-emerald-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4"><svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>
                     <h5 className="text-xl font-black text-emerald-900 uppercase tracking-tighter">Transmission Réussie</h5>
-                    <p className="text-xs font-bold text-emerald-600">
-                      {isSupabaseConfigured ? 'M. Rachidi a reçu votre message via le cloud.' : 'Message enregistré localement.'}
-                    </p>
+                    <p className="text-xs font-bold text-emerald-600">M. Rachidi a reçu votre message via le Cloud.</p>
                   </div>
                 ) : (
                   <form onSubmit={handleContactSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Nom Complet *</label>
-                        <input type="text" placeholder="VOTRE NOM" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black uppercase outline-none focus:border-emerald-500" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Téléphone *</label>
-                        <input type="tel" placeholder="06XXXXXXXX" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500" value={formData.phone} onChange={handlePhoneChange} />
-                      </div>
+                      <input type="text" placeholder="NOM COMPLET" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-xs font-black uppercase outline-none focus:border-emerald-500" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
+                      <input type="tel" placeholder="TÉLÉPHONE" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-xs font-black outline-none focus:border-emerald-500" value={formData.phone} onChange={handlePhoneChange} />
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Email *</label>
-                        <input type="email" placeholder="MAIL@EXEMPLE.COM" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Service</label>
-                        <select className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs font-black outline-none focus:border-emerald-500" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value as any})}>
-                          <option value="Jardinage">Jardinage</option>
-                          <option value="Nettoyage">Nettoyage</option>
-                          <option value="Entretien">Entretien</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[9px] font-black text-slate-400 uppercase ml-4 tracking-widest">Message *</label>
-                      <textarea placeholder="DÉTAILS DU PROJET..." required className="w-full bg-slate-50 border border-slate-100 p-6 rounded-3xl text-xs font-bold h-36 resize-none outline-none focus:border-emerald-500" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
-                    </div>
-                    <button type="submit" disabled={dbLoading} className="w-full py-6 bg-emerald-600 text-white rounded-[25px] font-black text-[11px] tracking-widest hover:bg-emerald-700 transition-all shadow-xl uppercase">
-                      {dbLoading ? "ENVOI EN COURS..." : isSupabaseConfigured ? "Envoyer au Maroc" : "Enregistrer (Mode Local)"}
+                    <textarea placeholder="VOTRE PROJET..." required className="w-full bg-slate-50 border border-slate-100 p-6 rounded-3xl text-xs font-bold h-40 resize-none outline-none focus:border-emerald-500" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
+                    <button type="submit" disabled={dbLoading} className="w-full py-6 bg-emerald-600 text-white rounded-[25px] font-black text-[11px] tracking-widest shadow-xl uppercase transition-all hover:bg-emerald-700">
+                      {dbLoading ? "ENVOI EN COURS..." : "Envoyer au Maroc"}
                     </button>
                   </form>
                 )}
@@ -526,28 +493,10 @@ const App: React.FC = () => {
         </div>
         
         <footer className="h-16 flex items-center justify-between px-8 bg-white border-t border-slate-100 text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0">
-          <p>© 2025 STE RACHIDI JARDINAGE</p>
+          <p>© 2025 STE RACHIDI JARDINAGE • SAFI</p>
         </footer>
       </main>
 
-      {selectedProject && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-12 bg-slate-950/95 backdrop-blur-md">
-          <div className="bg-white w-full max-w-6xl max-h-[90vh] rounded-[40px] overflow-hidden flex flex-col lg:flex-row shadow-2xl animate-in zoom-in-95">
-            <div className="lg:w-1/2 h-64 lg:h-auto bg-slate-100 relative">
-              <img src={selectedProject.imageUrl} className="w-full h-full object-cover" alt={selectedProject.title} />
-              <button onClick={() => setSelectedProject(null)} className="absolute top-6 right-6 p-4 bg-white/20 backdrop-blur-md text-white rounded-full lg:hidden">✕</button>
-            </div>
-            <div className="lg:w-1/2 p-8 md:p-16 overflow-y-auto custom-scroll space-y-10">
-              <div className="flex justify-between items-start">
-                <h4 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">{selectedProject.title}</h4>
-                <button onClick={() => setSelectedProject(null)} className="hidden lg:block p-4 bg-slate-50 hover:bg-slate-100 rounded-full transition-colors text-slate-400">✕</button>
-              </div>
-              <p className="text-sm md:text-base text-slate-500 font-medium italic border-l-4 border-emerald-500 pl-8 py-4 bg-slate-50 rounded-r-3xl">{selectedProject.description}</p>
-            </div>
-          </div>
-        </div>
-      )}
-      
       <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 z-[60] w-16 h-16 bg-[#25D366] text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-90 transition-all animate-bounce-slow">
         <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
       </a>
