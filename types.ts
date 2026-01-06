@@ -6,7 +6,7 @@ export interface QuoteRequest {
   clientName: string;
   phone: string;
   email: string;
-  serviceType: 'Jardinage' | 'Nettoyage' | 'Entretien' | 'Fourniture' | 'Autre';
+  serviceType: 'Jardinage' | 'Nettoyage' | 'Fourniture des plantes' | 'Autre';
   subject: string;
   budget: string;
 }
