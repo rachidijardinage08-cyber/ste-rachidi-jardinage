@@ -1,13 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Récupération des variables d'environnement
+// Configuration du client Supabase
+// On utilise process.env car c'est le standard dans cet environnement
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
 
-// On vérifie si les credentials sont présents avant d'initialiser
 export const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
 
-// Si configuré, on crée le client, sinon on exporte null (géré dans l'App)
+// Export du client unique pour toute l'application
 export const supabase = isSupabaseConfigured 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+      },
+    }) 
   : null;
