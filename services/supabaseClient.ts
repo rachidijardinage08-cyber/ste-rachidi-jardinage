@@ -1,30 +1,29 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Récupération intelligente : Supporte Vercel (process.env), Vite (import.meta.env) et le Fallback manuel
 const getEnv = (key: string): string => {
   let value = '';
   
-  // 1. Tentative via import.meta.env (Vite standard)
+  // 1. Vite / Vercel Environment (Priorité absolue pour le Global Sync)
   try {
     // @ts-ignore
-    value = import.meta.env[`VITE_${key}`] || import.meta.env[key];
+    value = import.meta.env[`VITE_${key}`] || import.meta.env[key] || '';
   } catch (e) {}
 
-  // 2. Tentative via process.env (Vercel standard)
   if (!value) {
     try {
+      // @ts-ignore
       value = process.env[key] || '';
     } catch (e) {}
   }
 
-  // 3. Tentative via localStorage (Setup manuel du gérant)
+  // 2. Admin Manual Fallback (Pour le test du gérant)
   if (!value) {
     try {
-      value = localStorage.getItem(`RACHIDI_FALLBACK_${key}`) || '';
+      value = localStorage.getItem(`RACHIDI_FORCE_SYNC_${key}`) || '';
     } catch (e) {}
   }
 
-  return value;
+  return value.trim();
 };
 
 const supabaseUrl = getEnv('SUPABASE_URL');
@@ -32,6 +31,7 @@ const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY');
 
 export const isSupabaseConfigured = supabaseUrl.length > 10 && supabaseAnonKey.length > 20;
 
+// Création du client avec gestion des erreurs
 export const supabase = isSupabaseConfigured 
   ? createClient(supabaseUrl, supabaseAnonKey, {
       realtime: {
@@ -42,37 +42,34 @@ export const supabase = isSupabaseConfigured
     }) 
   : null;
 
-// Mock DB pour éviter les crashs si pas de config
+// Système de stockage local (si le cloud n'est pas configuré au build)
 export const mockDb = {
-  getMessages: () => JSON.parse(localStorage.getItem('rachidi_mock_messages') || '[]'),
+  getMessages: () => JSON.parse(localStorage.getItem('rachidi_local_msgs') || '[]'),
   saveMessage: (msg: any) => {
     const msgs = mockDb.getMessages();
     const newMsg = { ...msg, id: 'local_' + Date.now(), timestamp: new Date().toISOString() };
-    localStorage.setItem('rachidi_mock_messages', JSON.stringify([newMsg, ...msgs]));
+    localStorage.setItem('rachidi_local_msgs', JSON.stringify([newMsg, ...msgs]));
     return { data: [newMsg], error: null };
   },
   deleteMessage: (id: string) => {
     const msgs = mockDb.getMessages().filter((m: any) => m.id !== id);
-    localStorage.setItem('rachidi_mock_messages', JSON.stringify(msgs));
+    localStorage.setItem('rachidi_local_msgs', JSON.stringify(msgs));
   }
 };
 
 export const getSafeConfigStatus = () => ({
-  hasUrl: supabaseUrl.length > 10,
-  hasKey: supabaseAnonKey.length > 20,
-  urlValue: supabaseUrl,
-  keyValue: supabaseAnonKey,
+  url: supabaseUrl ? `${supabaseUrl.substring(0, 15)}...` : 'VIDE',
   configured: isSupabaseConfigured
 });
 
-export const saveFallbackKeys = (url: string, key: string) => {
-  localStorage.setItem('RACHIDI_FALLBACK_SUPABASE_URL', url.trim());
-  localStorage.setItem('RACHIDI_FALLBACK_SUPABASE_ANON_KEY', key.trim());
+export const saveAdminKeys = (url: string, key: string) => {
+  localStorage.setItem('RACHIDI_FORCE_SYNC_SUPABASE_URL', url.trim());
+  localStorage.setItem('RACHIDI_FORCE_SYNC_SUPABASE_ANON_KEY', key.trim());
   window.location.reload();
 };
 
-export const clearFallbackKeys = () => {
-  localStorage.removeItem('RACHIDI_FALLBACK_SUPABASE_URL');
-  localStorage.removeItem('RACHIDI_FALLBACK_SUPABASE_ANON_KEY');
+export const resetAdminKeys = () => {
+  localStorage.removeItem('RACHIDI_FORCE_SYNC_SUPABASE_URL');
+  localStorage.removeItem('RACHIDI_FORCE_SYNC_SUPABASE_ANON_KEY');
   window.location.reload();
 };
