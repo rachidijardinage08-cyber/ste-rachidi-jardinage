@@ -59,7 +59,7 @@ const PROJECTS: Project[] = [
 
 const QUALITY_PHASES = [
   {
-    title: "Logistique & Sécurité",
+    title: "Phase 01: Logistique & Sécurité",
     points: [
       { id: 1, t: "Propreté du Site", d: "Nettoyage systématique avant, pendant et après chaque intervention." },
       { id: 6, t: "Conformité HSE", d: "Port des EPI et balisage de sécurité sur tout périmètre de travail." },
@@ -67,7 +67,7 @@ const QUALITY_PHASES = [
     ]
   },
   {
-    title: "Technique & Précision",
+    title: "Phase 02: Technique & Précision",
     points: [
       { id: 3, t: "Géométrie des Bordures", d: "Alignement au laser pour des séparations gazon/allées parfaites." },
       { id: 4, t: "Performance d'Arrosage", d: "Test de pression et couverture de 100% de la zone ciblée." },
@@ -75,7 +75,7 @@ const QUALITY_PHASES = [
     ]
   },
   {
-    title: "Biologie & Végétal",
+    title: "Phase 03: Biologie & Végétal",
     points: [
       { id: 2, t: "Santé du Végétal", d: "Vérification rigoureuse de l'état racinaire et foliaire de chaque plante." },
       { id: 8, t: "Équilibre Nutritif", d: "Dosage précis des engrais bio adapté à chaque type de sol." },
@@ -83,7 +83,7 @@ const QUALITY_PHASES = [
     ]
   },
   {
-    title: "Finitions & Livraison",
+    title: "Phase 04: Finitions & Livraison",
     points: [
       { id: 5, t: "Finition des Sols", d: "Contrôle d'étanchéité et de niveau pour les surfaces minérales." },
       { id: 10, t: "Stabilité Structurelle", d: "Vérification de l'ancrage des gros sujets (palmiers/arbres)." },
@@ -395,40 +395,52 @@ const App: React.FC = () => {
           )}
 
           {view === 'QUALITY' && (
-            <div className="max-w-7xl mx-auto view-enter py-12 space-y-24">
-               <div className="text-center max-w-4xl mx-auto">
-                  <div className="inline-flex items-center gap-3 px-4 py-2 bg-emerald-50 rounded-full border border-emerald-100 mb-6">
-                    <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 12l2 2 4-4" /></svg>
-                    <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Protocole d'Excellence RACHIDI-OS</span>
+            <div className="max-w-6xl mx-auto view-enter py-12 pb-32">
+               <div className="text-center mb-24 relative">
+                  <div className="inline-block px-6 py-2 bg-emerald-50 border border-emerald-100 rounded-full mb-6">
+                    <span className="text-[10px] font-black text-emerald-700 uppercase tracking-[0.4em]">Audit de Performance & Qualité</span>
                   </div>
-                  <h2 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tighter uppercase leading-none mb-6">Standard de <span className="text-emerald-600">Confiance.</span></h2>
-                  <p className="text-slate-500 text-lg font-medium italic max-w-2xl mx-auto leading-relaxed">Nous ne livrons pas seulement un jardin, nous livrons une œuvre certifiée par 12 points de contrôle rigoureux.</p>
+                  <h2 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tighter uppercase leading-[0.9] mb-8">
+                    Notre <span className="text-emerald-600 underline decoration-emerald-200 underline-offset-8">Protocole</span> de Livraison.
+                  </h2>
+                  <p className="text-slate-400 text-lg font-medium italic max-w-2xl mx-auto">
+                    Une rigueur absolue appliquée à chaque m² aménagé. Les 12 piliers de l'excellence STE RACHIDI.
+                  </p>
                </div>
                
-               <div className="space-y-20">
+               <div className="relative border-l-2 border-emerald-100 ml-4 md:ml-8 pl-8 md:pl-16 space-y-32">
                   {QUALITY_PHASES.map((phase, pIdx) => (
-                    <div key={pIdx} className="relative">
-                      <div className="flex items-center gap-6 mb-10">
-                         <div className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.4em] bg-emerald-50 px-6 py-2 rounded-full border border-emerald-100">{phase.title}</div>
-                         <div className="flex-grow h-[1px] bg-slate-100"></div>
+                    <div key={pIdx} className="relative group">
+                      {/* Phase Marker */}
+                      <div className="absolute -left-[45px] md:-left-[77px] top-0 w-8 h-8 md:w-14 md:h-14 bg-[#064e3b] rounded-2xl flex items-center justify-center text-white border-4 border-white shadow-xl group-hover:bg-emerald-600 transition-colors duration-500">
+                        <span className="text-xs md:text-base font-black">0{pIdx + 1}</span>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                      <div className="mb-12">
+                         <h3 className="text-2xl md:text-4xl font-black text-slate-800 uppercase tracking-tighter mb-2 group-hover:text-emerald-700 transition-colors">{phase.title}</h3>
+                         <div className="w-20 h-1.5 bg-emerald-500 rounded-full"></div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-10">
                         {phase.points.map((point) => (
-                          <div key={point.id} className="bg-white p-10 rounded-[50px] border border-slate-50 shadow-sm hover:shadow-2xl hover:border-emerald-100 transition-all group flex flex-col h-full">
+                          <div key={point.id} className="bg-white p-8 md:p-10 rounded-[40px] border border-slate-50 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 flex flex-col group/card">
                             <div className="flex justify-between items-start mb-8">
-                               <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center text-xs font-black shadow-lg group-hover:bg-emerald-600 transition-colors">
+                               <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center text-[10px] font-black group-hover/card:bg-emerald-100 group-hover/card:text-emerald-700 transition-colors">
                                  {point.id < 10 ? `0${point.id}` : point.id}
                                </div>
-                               <svg className="w-6 h-6 text-slate-100 group-hover:text-emerald-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                            </div>
-                            <h4 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-4 leading-tight">{point.t}</h4>
-                            <p className="text-[11px] text-slate-400 font-bold leading-relaxed">{point.d}</p>
-                            <div className="mt-auto pt-8 flex items-center gap-2">
-                               <div className="flex-grow h-1.5 bg-slate-50 rounded-full overflow-hidden">
-                                  <div className="h-full bg-emerald-500 w-full opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                               <div className="w-6 h-6 rounded-full border-2 border-emerald-50 flex items-center justify-center group-hover/card:border-emerald-400 group-hover/card:bg-emerald-50 transition-all">
+                                  <svg className="w-3.5 h-3.5 text-emerald-400 opacity-0 group-hover/card:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" />
+                                  </svg>
                                </div>
-                               <span className="text-[8px] font-black text-slate-300 group-hover:text-emerald-500 uppercase tracking-widest">Vérifié</span>
+                            </div>
+                            <h4 className="text-lg font-black text-slate-900 uppercase tracking-tighter mb-4 leading-tight group-hover/card:text-emerald-800">{point.t}</h4>
+                            <p className="text-[11px] text-slate-400 font-bold leading-relaxed mb-6 italic">{point.d}</p>
+                            <div className="mt-auto flex items-center gap-3">
+                               <div className="h-1 bg-emerald-50 flex-grow rounded-full overflow-hidden">
+                                  <div className="h-full bg-emerald-500 w-full translate-x-[-100%] group-hover/card:translate-x-0 transition-transform duration-700"></div>
+                               </div>
+                               <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest group-hover/card:text-emerald-500 transition-colors">Opérationnel</span>
                             </div>
                           </div>
                         ))}
@@ -437,19 +449,29 @@ const App: React.FC = () => {
                   ))}
                </div>
 
-               <div className="bg-[#064e3b] rounded-[70px] p-16 text-center text-white space-y-8 shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
-                  <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-emerald-400/20 rounded-full blur-3xl"></div>
+               <div className="mt-32 bg-[#064e3b] rounded-[60px] md:rounded-[100px] p-12 md:p-24 text-center text-white relative overflow-hidden shadow-[0_50px_100px_-20px_rgba(6,78,59,0.3)]">
+                  <div className="absolute top-0 right-0 w-full h-full bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.1),transparent)]"></div>
+                  <div className="absolute bottom-0 left-0 w-full h-full bg-[radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.1),transparent)]"></div>
                   
-                  <div className="relative z-10 flex flex-col items-center">
-                    <div className="w-20 h-20 bg-emerald-500 rounded-[30px] flex items-center justify-center mb-8 shadow-2xl shadow-emerald-900/50">
-                       <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                  <div className="relative z-10 space-y-8">
+                    <div className="w-24 h-24 bg-emerald-500/20 backdrop-blur-xl rounded-[40px] flex items-center justify-center mx-auto mb-10 border border-emerald-500/30">
+                       <svg className="w-12 h-12 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                       </svg>
                     </div>
-                    <h5 className="text-[11px] font-black uppercase tracking-[0.5em] text-emerald-400 mb-4">Garantie RACHIDI EXCELLENCE</h5>
-                    <p className="text-2xl md:text-4xl font-black tracking-tighter uppercase max-w-3xl mx-auto leading-[1.1]">Zéro compromis sur la finition. Si un seul point de contrôle échoue, le gérant intervient personnellement.</p>
-                    <div className="mt-10 flex gap-4">
-                       <div className="px-5 py-2 bg-emerald-900/40 rounded-full border border-emerald-800 text-[9px] font-black uppercase tracking-widest text-emerald-200">Certifié HSE 2025</div>
-                       <div className="px-5 py-2 bg-emerald-900/40 rounded-full border border-emerald-800 text-[9px] font-black uppercase tracking-widest text-emerald-200">Audit Qualité Marque</div>
+                    <h4 className="text-[12px] font-black uppercase tracking-[0.6em] text-emerald-400">Rachidi Quality Assurance</h4>
+                    <p className="text-3xl md:text-5xl font-black tracking-tighter uppercase max-w-4xl mx-auto leading-tight">
+                      Si un seul point de contrôle est jugé non-conforme, l'équipe technique intervient en <span className="text-emerald-400">48h maximum</span> pour correction gratuite.
+                    </p>
+                    <div className="pt-10 flex flex-wrap justify-center gap-6">
+                       <div className="flex items-center gap-3 px-6 py-3 bg-white/5 rounded-2xl border border-white/10 text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm">
+                         <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                         Audit Interne Hebdomadaire
+                       </div>
+                       <div className="flex items-center gap-3 px-6 py-3 bg-white/5 rounded-2xl border border-white/10 text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm">
+                         <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                         Sourcing Matières Premium
+                       </div>
                     </div>
                   </div>
                </div>
