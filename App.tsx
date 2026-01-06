@@ -35,33 +35,76 @@ const SERVICES: ServiceCategory[] = [
 
 const PROJECTS: Project[] = [
   {
-    title: "Partenariat OCP Group",
-    imageUrl: "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=80&w=1000&auto=format&fit=crop",
-    tags: ["Industriel", "Maintenance"],
-    description: "Collaboration continue avec l'OCP pour le service de jardinage et nettoyage.",
-    fullDetails: ["Nettoyage industriel", "Maintenance espaces verts", "HSE strict"]
+    title: "Aménagement Villa Royale",
+    imageUrl: "https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?q=80&w=1200&auto=format&fit=crop",
+    tags: ["Résidentiel", "Premium"],
+    description: "Création d'un jardin méditerranéen avec système d'arrosage automatisé intelligent.",
+    fullDetails: ["Étude topographique complète", "Installation pompe solaire 3HP", "Gazon naturel 'Bermuda Grass'", "Plantation de 12 palmiers Washingtonia", "Éclairage LED RGB télécommandé"]
   },
   {
-    title: "Villas de Prestige",
-    imageUrl: "https://images.unsplash.com/photo-1558905619-1714249d9727?q=80&w=1000&auto=format&fit=crop",
-    tags: ["Résidentiel", "Création"],
-    description: "Conception et création complète d'espaces verts pour villas de luxe à Safi.",
-    fullDetails: ["Design 3D", "Arrosage automatique", "Plantations rares"]
+    title: "Maintenance Parc Industriel",
+    imageUrl: "https://images.unsplash.com/photo-1589923188900-85dae523342b?q=80&w=1200&auto=format&fit=crop",
+    tags: ["Industriel", "HSE"],
+    description: "Entretien trimestriel des espaces verts industriels pour les grands comptes de Safi.",
+    fullDetails: ["Taille ornementale des haies", "Traitement phytosanitaire certifié", "Désherbage manuel des zones de stockage", "Reporting hebdomadaire HSE", "Gestion centralisée de l'irrigation"]
+  },
+  {
+    title: "Espace Vert Copropriété",
+    imageUrl: "https://images.unsplash.com/photo-1598902108854-10e335adac99?q=80&w=1200&auto=format&fit=crop",
+    tags: ["Urbain", "Maintenance"],
+    description: "Réhabilitation complète des jardins d'une résidence de haut standing.",
+    fullDetails: ["Remplacement du gazon synthétique", "Création de l'arrosage auto", "Installation de jardinières modernes", "Aménagement allées piétonnes", "Plantation de fleurs saisonnières"]
+  }
+];
+
+const QUALITY_PHASES = [
+  {
+    title: "Logistique & Sécurité",
+    points: [
+      { id: 1, t: "Propreté du Site", d: "Nettoyage systématique avant, pendant et après chaque intervention." },
+      { id: 6, t: "Conformité HSE", d: "Port des EPI et balisage de sécurité sur tout périmètre de travail." },
+      { id: 7, t: "Gestion des Déchets", d: "Évacuation écologique et tri des résidus verts vers centres agréés." }
+    ]
+  },
+  {
+    title: "Technique & Précision",
+    points: [
+      { id: 3, t: "Géométrie des Bordures", d: "Alignement au laser pour des séparations gazon/allées parfaites." },
+      { id: 4, t: "Performance d'Arrosage", d: "Test de pression et couverture de 100% de la zone ciblée." },
+      { id: 11, t: "Systèmes Électriques", d: "Isolation et test de fonctionnement de l'éclairage extérieur." }
+    ]
+  },
+  {
+    title: "Biologie & Végétal",
+    points: [
+      { id: 2, t: "Santé du Végétal", d: "Vérification rigoureuse de l'état racinaire et foliaire de chaque plante." },
+      { id: 8, t: "Équilibre Nutritif", d: "Dosage précis des engrais bio adapté à chaque type de sol." },
+      { id: 9, t: "Précision de Taille", d: "Coupes cicatrisantes pour préserver la vigueur des arbres et haies." }
+    ]
+  },
+  {
+    title: "Finitions & Livraison",
+    points: [
+      { id: 5, t: "Finition des Sols", d: "Contrôle d'étanchéité et de niveau pour les surfaces minérales." },
+      { id: 10, t: "Stabilité Structurelle", d: "Vérification de l'ancrage des gros sujets (palmiers/arbres)." },
+      { id: 12, t: "Validation Client", d: "Visite guidée finale et signature du procès-verbal de livraison." }
+    ]
   }
 ];
 
 const LOGO_URL = "https://i.ibb.co/LdF8wDg0/Empreinte-verte-et-nature.png";
 const MY_PHONE = "212664381028";
-const MY_PHONE_DISPLAY = "06 64 38 10 28";
-const MY_ADDRESS = "17 RUE E HAY OUMNIA EL BOUAB, SAFI, MAROC";
 const WHATSAPP_URL = `https://wa.me/${MY_PHONE}`;
 const ADMIN_USER = "admin";
 const ADMIN_PASSWORD = "Rjns2025@@";
+
+type RealtimeStatus = 'OFF' | 'CONNECTING' | 'CONNECTED' | 'ERROR';
 
 const App: React.FC = () => {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [view, setView] = useState<AppView>('HOME');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [adminUserInput, setAdminUserInput] = useState('');
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -71,7 +114,7 @@ const App: React.FC = () => {
   const [dbLoading, setDbLoading] = useState(false);
   const [adminSubTab, setAdminSubTab] = useState<'MESSAGES' | 'VISITS'>('MESSAGES');
   const [phoneError, setPhoneError] = useState('');
-  const [isRealtimeActive, setIsRealtimeActive] = useState(false);
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('OFF');
   
   const [formData, setFormData] = useState<QuoteRequest>({
     clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: ''
@@ -80,12 +123,12 @@ const App: React.FC = () => {
   const currentVisitorId = useRef<string | null>(localStorage.getItem('rachidi_visit_id'));
   const pagesTracked = useRef<Set<string>>(new Set());
 
-  // Quick Init Logic
   useEffect(() => {
     const timer = setTimeout(() => setIsAppLoading(false), 500);
     initVisitorTracking();
     
     if (isSupabaseConfigured && supabase) {
+      setRealtimeStatus('CONNECTING');
       fetchData();
       
       const channel = supabase.channel('rachidi-hq-realtime')
@@ -98,13 +141,17 @@ const App: React.FC = () => {
           if (payload.eventType === 'UPDATE') setVisitorLogs(prev => prev.map(l => l.id === payload.new.id ? (payload.new as VisitorLog) : l));
         })
         .subscribe((status) => {
-          if (status === 'SUBSCRIBED') setIsRealtimeActive(true);
+          if (status === 'SUBSCRIBED') setRealtimeStatus('CONNECTED');
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRealtimeStatus('ERROR');
+          if (status === 'CLOSED') setRealtimeStatus('OFF');
         });
-
+        
       return () => {
         supabase.removeChannel(channel);
         clearTimeout(timer);
       };
+    } else {
+      setRealtimeStatus('OFF');
     }
   }, []);
 
@@ -122,13 +169,11 @@ const App: React.FC = () => {
        currentVisitorId.current = savedVisitId;
        return;
     }
-
     let ipData = { ip: 'Client', city: 'Safi', country_name: 'Maroc' };
     try {
       const ipRes = await fetch('https://ipapi.co/json/');
       if (ipRes.ok) ipData = await ipRes.json();
     } catch (e) {}
-    
     const newLog: VisitorLog = {
       timestamp: new Date().toISOString(),
       ip: ipData.ip || '0.0.0.0',
@@ -136,7 +181,6 @@ const App: React.FC = () => {
       pagesViewed: [view],
       userAgent: navigator.userAgent
     };
-
     if (isSupabaseConfigured && supabase) {
       const { data } = await supabase.from('visitor_logs').insert([newLog]).select();
       if (data && data.length > 0) {
@@ -209,8 +253,6 @@ const App: React.FC = () => {
       if (!error) {
         setShowSuccess(true);
         setFormData({ clientName: '', phone: '', email: '', serviceType: 'Jardinage', subject: '', budget: '' });
-      } else {
-        console.error("DB Error:", error);
       }
     }
     setDbLoading(false);
@@ -224,6 +266,24 @@ const App: React.FC = () => {
     { id: 'QUALITY', label: 'Qualité', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944' },
     { id: 'CONTACT', label: 'Contact', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8' }
   ];
+
+  const getStatusColor = () => {
+    switch(realtimeStatus) {
+      case 'CONNECTED': return 'bg-emerald-500 animate-pulse';
+      case 'CONNECTING': return 'bg-amber-400 animate-bounce';
+      case 'ERROR': return 'bg-red-500';
+      default: return 'bg-slate-300';
+    }
+  };
+
+  const getStatusText = () => {
+    switch(realtimeStatus) {
+      case 'CONNECTED': return 'Real-time Linked';
+      case 'CONNECTING': return 'Syncing...';
+      case 'ERROR': return 'Connection Error';
+      default: return 'Offline Mode';
+    }
+  };
 
   if (isAppLoading) {
     return (
@@ -269,14 +329,203 @@ const App: React.FC = () => {
           </div>
           <div className="hidden md:flex items-center gap-6">
              <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100">
-               <span className={`w-2 h-2 rounded-full ${isRealtimeActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
-               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Real-time Live</span>
+               <span className={`w-2 h-2 rounded-full ${getStatusColor()}`}></span>
+               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{getStatusText()}</span>
              </div>
-             <p className="text-sm font-black text-slate-900 mono">{new Date().toLocaleTimeString()}</p>
           </div>
         </header>
 
         <div className="flex-grow overflow-y-auto custom-scroll bg-slate-50/30 p-6 md:p-12">
+          {view === 'HOME' && (
+            <div className="max-w-7xl mx-auto view-enter space-y-24 py-12">
+              <div className="flex flex-col lg:flex-row gap-16 items-center">
+                <div className="space-y-8 lg:w-1/2">
+                   <div className="inline-flex items-center gap-3 px-5 py-2.5 bg-emerald-50 border border-emerald-100 rounded-full"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span><span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Safi Excellence Paysagère</span></div>
+                   <h1 className="text-6xl md:text-8xl font-black text-slate-900 leading-[0.85] tracking-tighter uppercase">Pure <span className="text-emerald-600">Nature</span> Professionnelle.</h1>
+                   <p className="text-lg text-slate-500 font-medium italic">Expert en aménagement et entretien des espaces verts à Safi.</p>
+                   <div className="flex gap-4">
+                      <button onClick={() => setView('CONTACT')} className="px-10 py-5 bg-emerald-600 text-white rounded-[20px] font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl">Start Project</button>
+                      <button onClick={() => setView('SERVICES')} className="px-10 py-5 bg-white border border-slate-100 text-slate-800 rounded-[20px] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-50 transition-all">Our Services</button>
+                   </div>
+                </div>
+                <div className="lg:w-1/2 relative">
+                   <img src="https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=1200&q=80" className="rounded-[80px] shadow-2xl relative z-10 aspect-[4/5] object-cover" alt="Hero" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {view === 'SERVICES' && (
+            <div className="max-w-7xl mx-auto view-enter space-y-16 py-12">
+              <div className="text-center max-w-2xl mx-auto mb-16">
+                <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase mb-4">Nos <span className="text-emerald-600">Expertises</span></h2>
+                <p className="text-slate-500 font-medium italic">Une vision globale pour des espaces verts durables et harmonieux.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {SERVICES.map((cat, i) => (
+                  <div key={i} className="bg-white p-10 rounded-[45px] border border-slate-100 shadow-sm hover:shadow-xl transition-all">
+                    <div className="text-4xl mb-6">{cat.icon}</div>
+                    <h4 className="text-2xl font-black text-slate-900 mb-8 uppercase tracking-tighter">{cat.title}</h4>
+                    <div className="space-y-6">
+                      {cat.items.map((item, j) => (
+                        <div key={j}>
+                          <h5 className="text-[10px] font-black text-emerald-600 uppercase mb-2 tracking-widest">{item.name}</h5>
+                          <p className="text-xs text-slate-500 leading-relaxed font-medium">{item.desc}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {view === 'PORTFOLIO' && (
+            <div className="max-w-7xl mx-auto view-enter py-12">
+              <div className="text-center max-w-2xl mx-auto mb-20">
+                <h2 className="text-5xl font-black text-slate-900 tracking-tighter uppercase mb-4">Projets <span className="text-emerald-600">Phare</span></h2>
+                <p className="text-slate-500 font-medium italic uppercase tracking-widest text-[10px]">Découvrez nos réalisations à Safi.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                {PROJECTS.map((project, i) => (
+                  <ProjectCard key={i} project={project} onExplore={() => setSelectedProject(project)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {view === 'QUALITY' && (
+            <div className="max-w-7xl mx-auto view-enter py-12 space-y-24">
+               <div className="text-center max-w-4xl mx-auto">
+                  <div className="inline-flex items-center gap-3 px-4 py-2 bg-emerald-50 rounded-full border border-emerald-100 mb-6">
+                    <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 12l2 2 4-4" /></svg>
+                    <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Protocole d'Excellence RACHIDI-OS</span>
+                  </div>
+                  <h2 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tighter uppercase leading-none mb-6">Standard de <span className="text-emerald-600">Confiance.</span></h2>
+                  <p className="text-slate-500 text-lg font-medium italic max-w-2xl mx-auto leading-relaxed">Nous ne livrons pas seulement un jardin, nous livrons une œuvre certifiée par 12 points de contrôle rigoureux.</p>
+               </div>
+               
+               <div className="space-y-20">
+                  {QUALITY_PHASES.map((phase, pIdx) => (
+                    <div key={pIdx} className="relative">
+                      <div className="flex items-center gap-6 mb-10">
+                         <div className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.4em] bg-emerald-50 px-6 py-2 rounded-full border border-emerald-100">{phase.title}</div>
+                         <div className="flex-grow h-[1px] bg-slate-100"></div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        {phase.points.map((point) => (
+                          <div key={point.id} className="bg-white p-10 rounded-[50px] border border-slate-50 shadow-sm hover:shadow-2xl hover:border-emerald-100 transition-all group flex flex-col h-full">
+                            <div className="flex justify-between items-start mb-8">
+                               <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center text-xs font-black shadow-lg group-hover:bg-emerald-600 transition-colors">
+                                 {point.id < 10 ? `0${point.id}` : point.id}
+                               </div>
+                               <svg className="w-6 h-6 text-slate-100 group-hover:text-emerald-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            </div>
+                            <h4 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-4 leading-tight">{point.t}</h4>
+                            <p className="text-[11px] text-slate-400 font-bold leading-relaxed">{point.d}</p>
+                            <div className="mt-auto pt-8 flex items-center gap-2">
+                               <div className="flex-grow h-1.5 bg-slate-50 rounded-full overflow-hidden">
+                                  <div className="h-full bg-emerald-500 w-full opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                               </div>
+                               <span className="text-[8px] font-black text-slate-300 group-hover:text-emerald-500 uppercase tracking-widest">Vérifié</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+               </div>
+
+               <div className="bg-[#064e3b] rounded-[70px] p-16 text-center text-white space-y-8 shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
+                  <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-emerald-400/20 rounded-full blur-3xl"></div>
+                  
+                  <div className="relative z-10 flex flex-col items-center">
+                    <div className="w-20 h-20 bg-emerald-500 rounded-[30px] flex items-center justify-center mb-8 shadow-2xl shadow-emerald-900/50">
+                       <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                    </div>
+                    <h5 className="text-[11px] font-black uppercase tracking-[0.5em] text-emerald-400 mb-4">Garantie RACHIDI EXCELLENCE</h5>
+                    <p className="text-2xl md:text-4xl font-black tracking-tighter uppercase max-w-3xl mx-auto leading-[1.1]">Zéro compromis sur la finition. Si un seul point de contrôle échoue, le gérant intervient personnellement.</p>
+                    <div className="mt-10 flex gap-4">
+                       <div className="px-5 py-2 bg-emerald-900/40 rounded-full border border-emerald-800 text-[9px] font-black uppercase tracking-widest text-emerald-200">Certifié HSE 2025</div>
+                       <div className="px-5 py-2 bg-emerald-900/40 rounded-full border border-emerald-800 text-[9px] font-black uppercase tracking-widest text-emerald-200">Audit Qualité Marque</div>
+                    </div>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {view === 'CONTACT' && (
+            <div className="max-w-4xl mx-auto view-enter pb-24">
+              <div className="bg-white rounded-[60px] p-10 md:p-16 shadow-2xl border border-slate-50">
+                <h4 className="text-4xl font-black text-slate-900 mb-12 tracking-tighter uppercase text-center">Estimation <span className="text-emerald-600">Directe.</span></h4>
+                {showSuccess ? (
+                  <div className="bg-emerald-50 p-16 rounded-[40px] text-center space-y-4 animate-in zoom-in">
+                    <div className="w-20 h-20 bg-emerald-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl"><svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>
+                    <h5 className="text-2xl font-black text-emerald-900 uppercase tracking-tighter">Notification Envoyée</h5>
+                    <p className="text-sm font-bold text-emerald-600">Le gérant recevra votre demande instantanément sur son tableau de bord.</p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleContactSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Nom Complet</label>
+                      <input type="text" placeholder="VOTRE NOM" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-emerald-500 transition-all" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Téléphone</label>
+                      <div className="relative">
+                        <input type="tel" placeholder="06XXXXXXXX" required className={`w-full bg-slate-50 border ${phoneError ? 'border-red-300' : 'border-slate-100'} p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500 transition-all`} value={formData.phone} onChange={handlePhoneChange} />
+                        {phoneError && <span className="absolute -bottom-5 left-4 text-[8px] text-red-500 font-black uppercase">{phoneError}</span>}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Email</label>
+                      <input type="email" placeholder="EXEMPLE@MAIL.COM" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500 uppercase transition-all" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Service Souhaité</label>
+                      <select required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500 uppercase transition-all bg-white" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value as any})}>
+                        <option value="Jardinage">Jardinage</option>
+                        <option value="Nettoyage">Nettoyage</option>
+                        <option value="Fourniture des plantes">Fourniture des plantes</option>
+                        <option value="Autre">Autre</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-2 space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Budget Estimé (DH)</label>
+                      <input type="text" placeholder="EX: 5000" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500 transition-all" value={formData.budget} onChange={e => setFormData({...formData, budget: e.target.value})} />
+                    </div>
+                    <div className="md:col-span-2 space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Détails du projet</label>
+                      <textarea placeholder="DÉCRIVEZ VOTRE BESOIN..." required className="w-full bg-slate-50 border border-slate-100 p-6 rounded-[30px] text-xs font-bold h-32 resize-none outline-none focus:border-emerald-500 transition-all" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
+                    </div>
+                    <button type="submit" disabled={dbLoading || !!phoneError} className={`md:col-span-2 py-6 ${dbLoading || !!phoneError ? 'bg-slate-200 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white rounded-[25px] font-black text-[10px] tracking-[0.3em] uppercase transition-all shadow-xl active:scale-95`}>
+                      {dbLoading ? "SYCHRONISATION..." : "Envoyer la Demande"}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
+
+          {view === 'LOGIN' && (
+            <div className="min-h-[60vh] flex items-center justify-center view-enter">
+              <div className="bg-white p-12 rounded-[50px] shadow-2xl border border-slate-100 w-full max-w-md text-center">
+                <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-8">
+                  <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 mb-8 uppercase tracking-tighter">Accès Gérant</h2>
+                <form onSubmit={handleAdminLogin} className="space-y-4">
+                  <input type="text" placeholder="LOGIN" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl font-black focus:border-emerald-500 outline-none uppercase" value={adminUserInput} onChange={(e) => setAdminUserInput(e.target.value)} />
+                  <input type="password" placeholder="PASSWORD" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl font-black focus:border-emerald-500 outline-none" value={adminPasswordInput} onChange={(e) => setAdminPasswordInput(e.target.value)} />
+                  {loginError && <p className="text-xs text-red-500 font-bold">{loginError}</p>}
+                  <button type="submit" className="w-full mt-2 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] tracking-widest shadow-xl uppercase hover:bg-emerald-700 active:scale-95 transition-all">Se Connecter</button>
+                </form>
+              </div>
+            </div>
+          )}
+
           {view === 'ADMIN' && (
             <div className="max-w-6xl mx-auto view-enter space-y-8 pb-24">
               <div className="flex flex-col md:flex-row justify-between items-center gap-6">
@@ -289,12 +538,18 @@ const App: React.FC = () => {
                    <button onClick={() => setAdminSubTab('VISITS')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'VISITS' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Visiteurs ({visitorLogs.length})</button>
                 </div>
               </div>
+              
+              {!isSupabaseConfigured && (
+                <div className="p-6 bg-red-50 border border-red-100 rounded-[30px] flex items-center gap-4 text-red-600">
+                   <svg className="w-6 h-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                   <p className="text-[10px] font-black uppercase tracking-widest">Alerte System: Supabase non configuré. Les données sont en mode lecture-seule ou locales.</p>
+                </div>
+              )}
 
               {adminSubTab === 'MESSAGES' ? (
                 <div className="grid grid-cols-1 gap-4">
-                  {messages.length === 0 && <div className="p-20 text-center bg-white rounded-[40px] border-2 border-dashed border-slate-100 text-slate-300 font-bold uppercase tracking-widest">Aucun message pour le moment</div>}
                   {messages.map((msg) => (
-                    <div key={msg.id} className="bg-white p-6 md:p-8 rounded-[35px] border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row gap-6 items-start animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div key={msg.id} className="bg-white p-8 rounded-[35px] border border-slate-100 shadow-sm flex flex-col md:flex-row gap-6 items-start animate-in fade-in slide-in-from-right-4 duration-300">
                       <div className="flex-grow space-y-3">
                         <div className="flex items-center gap-3">
                           <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black rounded-lg uppercase tracking-widest">{msg.serviceType}</span>
@@ -339,84 +594,63 @@ const App: React.FC = () => {
               )}
             </div>
           )}
-
-          {view === 'LOGIN' && (
-            <div className="min-h-[60vh] flex items-center justify-center view-enter">
-              <div className="bg-white p-12 rounded-[50px] shadow-2xl border border-slate-100 w-full max-w-md text-center">
-                <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-8">
-                  <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                </div>
-                <h2 className="text-2xl font-black text-slate-900 mb-8 uppercase tracking-tighter">Accès Gérant</h2>
-                <form onSubmit={handleAdminLogin} className="space-y-4">
-                  <input type="text" placeholder="LOGIN" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl font-black focus:border-emerald-500 outline-none uppercase" value={adminUserInput} onChange={(e) => setAdminUserInput(e.target.value)} />
-                  <input type="password" placeholder="PASSWORD" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl font-black focus:border-emerald-500 outline-none" value={adminPasswordInput} onChange={(e) => setAdminPasswordInput(e.target.value)} />
-                  {loginError && <p className="text-xs text-red-500 font-bold">{loginError}</p>}
-                  <button type="submit" className="w-full mt-2 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] tracking-widest shadow-xl uppercase hover:bg-emerald-700 active:scale-95 transition-all">Se Connecter</button>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {view === 'HOME' && (
-            <div className="max-w-7xl mx-auto view-enter space-y-24 py-12">
-              <div className="flex flex-col lg:flex-row gap-16 items-center">
-                <div className="space-y-8 lg:w-1/2">
-                   <div className="inline-flex items-center gap-3 px-5 py-2.5 bg-emerald-50 border border-emerald-100 rounded-full"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span><span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Safi Excellence Paysagère</span></div>
-                   <h1 className="text-6xl md:text-8xl font-black text-slate-900 leading-[0.85] tracking-tighter uppercase">Pure <span className="text-emerald-600">Nature</span> Professionnelle.</h1>
-                   <p className="text-lg text-slate-500 font-medium italic">Leader du jardinage et du nettoyage industriel à Safi depuis 2016.</p>
-                   <div className="flex gap-4">
-                      <button onClick={() => setView('CONTACT')} className="px-10 py-5 bg-emerald-600 text-white rounded-[20px] font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl">Start Project</button>
-                      <button onClick={() => setView('SERVICES')} className="px-10 py-5 bg-white border border-slate-100 text-slate-800 rounded-[20px] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-50 transition-all">Our Services</button>
-                   </div>
-                </div>
-                <div className="lg:w-1/2 relative">
-                   <div className="absolute -top-10 -right-10 w-40 h-40 bg-emerald-100/50 blur-3xl rounded-full"></div>
-                   <img src="https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=1200&q=80" className="rounded-[80px] shadow-2xl relative z-10 aspect-[4/5] object-cover" alt="Hero" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {view === 'CONTACT' && (
-            <div className="max-w-4xl mx-auto view-enter pb-24">
-              <div className="bg-white rounded-[60px] p-10 md:p-16 shadow-2xl border border-slate-50">
-                <h4 className="text-4xl font-black text-slate-900 mb-12 tracking-tighter uppercase text-center">Estimation <span className="text-emerald-600">Directe.</span></h4>
-                {showSuccess ? (
-                  <div className="bg-emerald-50 p-16 rounded-[40px] text-center space-y-4 animate-in zoom-in">
-                    <div className="w-20 h-20 bg-emerald-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl"><svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>
-                    <h5 className="text-2xl font-black text-emerald-900 uppercase tracking-tighter">Notification Envoyée</h5>
-                    <p className="text-sm font-bold text-emerald-600">Le gérant recevra votre demande instantanément sur son tableau de bord.</p>
-                  </div>
-                ) : (
-                  <form onSubmit={handleContactSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <input type="text" placeholder="NOM COMPLET" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-emerald-500" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
-                    <div className="relative">
-                      <input type="tel" placeholder="TÉLÉPHONE (06...)" required className={`w-full bg-slate-50 border ${phoneError ? 'border-red-300' : 'border-slate-100'} p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500`} value={formData.phone} onChange={handlePhoneChange} />
-                      {phoneError && <span className="absolute -bottom-5 left-4 text-[8px] text-red-500 font-black uppercase">{phoneError}</span>}
-                    </div>
-                    <input type="email" placeholder="E-MAIL" required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500 uppercase" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                    <select required className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-[10px] font-black outline-none focus:border-emerald-500 uppercase" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value as any})}>
-                      <option value="Jardinage">Jardinage</option>
-                      <option value="Nettoyage">Nettoyage</option>
-                      <option value="Fourniture des plantes">Fourniture des plantes</option>
-                    </select>
-                    <div className="md:col-span-2">
-                      <textarea placeholder="DÉTAILS DU PROJET..." required className="w-full bg-slate-50 border border-slate-100 p-6 rounded-[30px] text-xs font-bold h-32 resize-none outline-none focus:border-emerald-500" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
-                    </div>
-                    <button type="submit" disabled={dbLoading || !!phoneError} className={`md:col-span-2 py-6 ${dbLoading || !!phoneError ? 'bg-slate-200 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white rounded-[25px] font-black text-[10px] tracking-[0.3em] uppercase transition-all shadow-xl active:scale-95`}>
-                      {dbLoading ? "SYCHRONISATION..." : "Soumettre la Demande"}
-                    </button>
-                  </form>
-                )}
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Modal d'explication des projets */}
+        {selectedProject && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-12 animate-in fade-in duration-300">
+            <div className="absolute inset-0 bg-[#064e3b]/40 backdrop-blur-md" onClick={() => setSelectedProject(null)}></div>
+            <div className="bg-white w-full max-w-5xl rounded-[40px] md:rounded-[60px] overflow-hidden shadow-2xl relative z-10 animate-in zoom-in-95 duration-300 flex flex-col md:flex-row max-h-[90vh]">
+              <div className="w-full md:w-1/2 h-64 md:h-auto min-h-[250px] md:min-h-full shrink-0 relative bg-slate-100">
+                <img 
+                  src={selectedProject.imageUrl} 
+                  className="absolute inset-0 w-full h-full object-cover" 
+                  alt={selectedProject.title}
+                  onLoad={(e) => (e.currentTarget.style.opacity = '1')}
+                  style={{ opacity: 0, transition: 'opacity 0.5s ease-in-out' }}
+                />
+              </div>
+              
+              <div className="p-8 md:p-14 flex flex-col overflow-y-auto custom-scroll w-full">
+                <div className="flex justify-between items-start mb-8">
+                   <div className="flex flex-wrap gap-2">
+                     {selectedProject.tags.map(t => <span key={t} className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black rounded-full uppercase tracking-widest">{t}</span>)}
+                   </div>
+                   <button onClick={() => setSelectedProject(null)} className="p-2 text-slate-300 hover:text-emerald-600 transition-colors bg-slate-50 rounded-xl">
+                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                   </button>
+                </div>
+                
+                <h3 className="text-3xl md:text-4xl font-black text-slate-900 mb-4 tracking-tighter uppercase leading-[0.9]">{selectedProject.title}</h3>
+                <p className="text-slate-500 font-medium italic mb-8 border-l-4 border-emerald-500 pl-5 text-sm md:text-base leading-relaxed">{selectedProject.description}</p>
+                
+                <div className="space-y-6">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
+                    <span className="w-8 h-[1px] bg-slate-200"></span>
+                    Explication Technique
+                  </h4>
+                  <ul className="space-y-4">
+                    {selectedProject.fullDetails.map((detail, idx) => (
+                      <li key={idx} className="flex gap-4 items-start group">
+                        <div className="w-8 h-8 bg-emerald-600 text-white rounded-xl flex items-center justify-center shrink-0 text-[11px] font-black shadow-lg shadow-emerald-200">{idx + 1}</div>
+                        <span className="text-sm md:text-base font-bold text-slate-700 leading-tight pt-1 group-hover:text-emerald-600 transition-colors">{detail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                
+                <div className="mt-auto pt-10 border-t border-slate-100 flex gap-4">
+                  <button onClick={() => {setSelectedProject(null); setView('CONTACT');}} className="flex-grow py-5 bg-[#064e3b] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-emerald-900 transition-all active:scale-95">Commander un projet similaire</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         
         <footer className="h-16 flex items-center justify-between px-10 bg-white border-t border-slate-100 text-[8px] font-black uppercase tracking-[0.3em] text-slate-300 shrink-0">
           <p>© 2025 STE RACHIDI • SAFI • REALTIME HQ</p>
           <div className="flex gap-4">
-             <span>Status: Online</span>
+             <span>Status: Stable</span>
              <span>Region: Safi-MA</span>
           </div>
         </footer>
